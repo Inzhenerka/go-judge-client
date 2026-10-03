@@ -1,0 +1,57 @@
+name: CI
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  package:
+    strategy:
+      matrix:
+        python: ['3.12', '3.13', '3.14']
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: '0.12.19'
+          python-version: ${{ matrix.python }}
+      - run: uv sync --locked
+      - run: uv run poe check
+      - run: uv run pytest tests/unit tests/transport tests/typing tests/cli --cov --cov-report=term-missing
+      - run: uv run poe check-proto
+      - run: uv build
+      - run: uv run poe check-wheel
+  integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: '0.12.19'
+          python-version: '3.13'
+      - run: uv sync --locked
+      - run: docker build -t go-judge-client-test:e9d70a0 -f examples/runtime-image/Dockerfile .
+      - name: Start disposable sandbox
+        run: >-
+          docker run -d --name gj-client-acceptance --label go-judge-client.test=true --privileged --cgroupns=host
+          --memory 512m --cpus 1 -p 127.0.0.1:15051:5051 go-judge-client-test:e9d70a0
+          -enable-grpc -grpc-addr :5051 -http-addr 127.0.0.1:5050
+          -auth-token gj-local-test-only -no-fallback -parallelism 1 -pre-fork 1
+      - run: uv run poe test-integration
+        env:
+          GO_JUDGE_TEST_TARGET: 127.0.0.1:15051
+      - run: uv run python scripts/check_cli_signal.py
+        env:
+          GO_JUDGE_TEST_TARGET: 127.0.0.1:15051
+      - run: uv run python scripts/check_remote_cleanup.py
+        env:
+          GO_JUDGE_TEST_TARGET: 127.0.0.1:15051
+          GO_JUDGE_TEST_CONTAINER: gj-client-acceptance
+      - name: Bounded redacted server log
+        if: failure()
+        run: docker logs --tail 50 gj-client-acceptance 2>&1 | sed 's/gj-local-test-only/[REDACTED]/g'
+      - name: Clean up
+        if: always()
+        run: docker rm -f gj-client-acceptance

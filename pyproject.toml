@@ -1,0 +1,66 @@
+[project]
+name = "go-judge-client"
+version = "0.1.0"
+description = "Typed asynchronous streaming client for go-judge"
+readme = "README.md"
+requires-python = ">=3.12"
+license = "MIT"
+license-files = ["LICENSE", "proto/LICENSE", "proto/PROTOBUF_LICENSE"]
+dependencies = ["pydantic>=2.12,<3", "grpcio>=1.78,<2", "protobuf>=6.33.5,<7"]
+
+[project.optional-dependencies]
+cli = ["typer>=0.25,<1"]
+
+[project.scripts]
+go-judge-client = "go_judge_client.cli:main"
+gj = "go_judge_client.cli:main"
+
+[build-system]
+requires = ["uv_build>=0.11,<0.13"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = ["pytest>=9,<10", "pytest-asyncio>=1.3,<2", "pytest-cov>=7,<8", "ruff>=0.15,<1", "ty>=0.0.20,<1", "poethepoet>=0.40,<1", "typer>=0.25,<1", "grpcio-tools==1.78.0"]
+
+[tool.ruff]
+line-length = 120
+extend-exclude = ["src/go_judge_client/_grpc", ".research"]
+
+[tool.uv.build-backend]
+source-include = ["proto/**", "scripts/**", "docs/**", "examples/**", "tests/**", "uv.lock", ".github/**", "CHANGELOG.md", "SECURITY.md"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "ASYNC", "RUF"]
+
+[tool.ty.src]
+exclude = ["src/go_judge_client/_grpc", ".research"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+markers = ["integration: requires a real disposable go-judge server"]
+
+[tool.poe.tasks]
+format = "ruff format ."
+fix = "ruff check --fix ."
+lint = "ruff check ."
+typecheck = "ty check"
+test = "pytest tests/unit tests/transport tests/typing tests/cli"
+prep = ["format", "lint", "typecheck", "test"]
+check = [{cmd = "ruff format --check ."}, {cmd = "ruff check ."}, {cmd = "ty check"}, {cmd = "pytest tests/unit tests/transport tests/typing tests/cli"}]
+test-integration = "python scripts/integration_watchdog.py"
+judge = "docker run --rm --privileged --cgroupns=host --memory 512m --cpus 1 -p 127.0.0.1:15051:5051 go-judge-client-test:e9d70a0 -enable-grpc -grpc-addr :5051 -http-addr 127.0.0.1:5050 -no-fallback -parallelism 1"
+generate-proto = "python scripts/generate_proto.py"
+check-proto = "python scripts/check_proto.py"
+build = "uv build"
+check-wheel = "python scripts/check_wheel.py"
+outdated = "uvx uv-outdated --direct"
+upgrade = "uv lock --upgrade"
+
+[tool.coverage.run]
+source = ["go_judge_client"]
+omit = ["*/_grpc/*", "*/cli/*"]
+
+[tool.coverage.report]
+fail_under = 90
+show_missing = true

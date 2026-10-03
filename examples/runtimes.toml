@@ -1,0 +1,10 @@
+[runtimes.python-data]
+command = ["/usr/local/runtimes/python-data/bin/python", "-u"]
+default_entrypoint = "main.py"
+
+[runtimes.python-data.limits]
+cpu_seconds = 10
+wall_seconds = 30
+memory_bytes = 268435456
+stack_bytes = 67108864
+processes = 32
