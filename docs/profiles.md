@@ -38,7 +38,10 @@ Zero, negative values and explicit `None` for mandatory fields are invalid. For 
 omitting the field inherits the rate limit; explicitly setting `None` removes that rate limit only.
 `Limits.model_dump()` and nested request/profile serialization retain only explicitly supplied fields,
 including an explicit `cpu_cores=None`; copy/JSON round trips preserve inheritance.
-Do not use individual attributes of an override object to inspect effective limits. Use
+Unspecified attributes on `Limits` are `None`, not built-in values. For example,
+`Limits(cpu_seconds=2).memory_bytes is None`: this object does not override memory.
+For `cpu_cores`, `model_fields_set` distinguishes omission from an explicit `None` that clears the rate.
+To inspect concrete values after inheritance, use
 `client.effective_limits(request)`, which returns a complete `ResolvedLimits` without connecting or
 executing code. Its `model_dump()` includes every effective field.
 

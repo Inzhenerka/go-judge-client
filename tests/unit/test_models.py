@@ -191,3 +191,18 @@ def test_limit_inheritance_survives_snapshots_and_serialization() -> None:
 def test_mandatory_limits_reject_none(field: str) -> None:
     with pytest.raises(ValidationError):
         Limits.model_validate({field: None})
+
+
+def test_overrides_do_not_present_defaults_as_explicit_values() -> None:
+    from go_judge_client import ResolvedLimits
+
+    overrides = Limits(cpu_seconds=2)
+    assert overrides.cpu_seconds == 2
+    assert overrides.memory_bytes is None
+    assert overrides.wall_seconds is None
+    assert not isinstance(overrides, ResolvedLimits)
+    assert overrides.model_dump() == {"cpu_seconds": 2}
+    restored = Limits.model_validate_json(overrides.model_dump_json())
+    assert restored.memory_bytes is None and restored.model_fields_set == {"cpu_seconds"}
+    assert "cpu_cores" not in Limits().model_fields_set
+    assert "cpu_cores" in Limits(cpu_cores=None).model_fields_set

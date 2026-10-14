@@ -70,8 +70,33 @@ class ResolvedLimits(Model):
         return self
 
 
-class Limits(ResolvedLimits):
+class Limits(Model):
     """Field overrides. Omitted fields inherit; explicit cpu_cores=None clears its limit."""
+
+    cpu_seconds: Seconds | None = Field(default=None, validate_default=False)
+    wall_seconds: Seconds | None = Field(default=None, validate_default=False)
+    memory_bytes: PositiveInt | None = Field(default=None, validate_default=False)
+    stack_bytes: PositiveInt | None = Field(default=None, validate_default=False)
+    processes: PositiveInt | None = Field(default=None, validate_default=False)
+    cpu_cores: Annotated[float, Field(gt=0, le=1_000_000, allow_inf_nan=False)] | None = None
+
+    @field_validator("cpu_seconds", "wall_seconds", "memory_bytes", "stack_bytes", "processes", mode="before")
+    @classmethod
+    def required_when_supplied(cls, value: object) -> object:
+        if value is None:
+            raise ValueError("Omit the field to inherit; an explicit null is not a limit")
+        return value
+
+    @field_validator("cpu_seconds", "wall_seconds", "cpu_cores", mode="before")
+    @classmethod
+    def numeric(cls, value: object) -> object:
+        return ResolvedLimits.numeric(value)
+
+    @model_validator(mode="after")
+    def precision(self) -> Self:
+        # Validate supplied values with the same wire constraints as effective limits.
+        ResolvedLimits.model_validate(self.model_dump())
+        return self
 
     @model_serializer(mode="wrap")
     def serialize_overrides(self, handler: SerializerFunctionWrapHandler) -> dict[str, object]:
