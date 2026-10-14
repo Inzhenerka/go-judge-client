@@ -39,7 +39,10 @@ even with `capture_output=False`. Exceeding a client budget cancels and raises `
 it never silently truncates a supposedly complete transcript.
 
 SDK results do not save files. The CLI writes requested paths exclusively under the chosen output directory,
-rejecting existing symlink/junction components and existing files. Use a private directory that other processes
+rejecting existing symlink/junction components and, by default, existing files. With `--overwrite`,
+regular files are replaced atomically using a temporary file in the destination directory. The replacement
+has private permissions; it does not retain old file permissions. This is per-file replacement, not a
+transaction across all artifacts. Use a private directory that other processes
 cannot mutate during writes; path checks are not a substitute for OS-level directory ownership.
 The CLI retains defensive Windows path checks, although Windows is not a supported target.
 These checks reject reserved device names, invalid characters and components ending in a

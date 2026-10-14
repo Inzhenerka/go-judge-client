@@ -82,7 +82,7 @@ def error_message(error: Exception) -> str:
     if isinstance(error, GoJudgeClientError):
         return f"{type(error).__name__}: {error}"
     if isinstance(error, FileExistsError):
-        return "Artifact destination already exists. Choose a new --output-dir or remove the existing file."
+        return "Artifact destination already exists. Choose a new --output-dir, remove the file, or use --overwrite."
     if isinstance(error, FileNotFoundError):
         return "Local file or directory was not found. Check the project, --profiles and --stdin-file paths."
     if isinstance(error, PermissionError):
@@ -142,6 +142,7 @@ def run(
     insecure: Annotated[bool, typer.Option(envvar="GJ_INSECURE")] = False,
     token_env: Annotated[str | None, typer.Option(envvar="GJ_TOKEN_ENV")] = None,
     output_dir: Path = Path("gj-output"),
+    overwrite: Annotated[bool, typer.Option(help="Atomically replace existing regular artifact files")] = False,
     include_excluded: bool = False,
     stdin_file: Path | None = None,
     timeout: float = 150,
@@ -191,7 +192,7 @@ def run(
                         destination.write(event.text)
                         destination.flush()
                     elif isinstance(event, Artifact):
-                        saved = save_artifact(output_dir, event.file)
+                        saved = save_artifact(output_dir, event.file, overwrite=overwrite)
                         typer.echo(f"Saved: {saved}", err=True)
                     elif isinstance(event, Finished):
                         result = event.result

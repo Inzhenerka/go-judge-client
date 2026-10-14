@@ -729,6 +729,9 @@ async def test_cli_text_output(server: tuple[FakeExecutor, str], tmp_path: Path)
     service.mode = "text-tail"
     source = tmp_path / "main.py"
     source.write_text("placeholder")
+    output = tmp_path / "artifacts"
+    output.mkdir()
+    (output / "binary").write_bytes(b"old")
     process = await asyncio.create_subprocess_exec(
         sys.executable,
         "-c",
@@ -738,6 +741,11 @@ async def test_cli_text_output(server: tuple[FakeExecutor, str], tmp_path: Path)
         "--target",
         target,
         "--insecure",
+        "--expect",
+        "binary",
+        "--output-dir",
+        str(output),
+        "--overwrite",
         "--",
         "run",
         stdout=asyncio.subprocess.PIPE,
@@ -752,4 +760,5 @@ async def test_cli_text_output(server: tuple[FakeExecutor, str], tmp_path: Path)
     assert process.returncode == 0
     assert stdout.decode() == "€�"
     # gRPC may prepend native fork diagnostics when spawning from this test server.
-    assert "err��\naccepted;" in stderr.decode()
+    assert "err�" in stderr.decode() and "�\naccepted;" in stderr.decode()
+    assert (output / "binary").read_bytes() == b"\0\xff"

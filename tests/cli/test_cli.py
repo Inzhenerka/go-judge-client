@@ -237,3 +237,46 @@ def test_nested_profile_diagnostics_hide_names_and_values(tmp_path: Path) -> Non
     assert result.exit_code == 2
     assert "runtimes.limits.memory_bytes: must be greater than zero" in result.output
     assert "private-name" not in result.output and "731" not in result.output
+
+
+def test_artifact_overwrite_is_atomic(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    target = tmp_path / "out.bin"
+    target.write_bytes(b"old")
+    original_replace = os.replace
+
+    def observe_replace(source: str | Path, destination: str | Path) -> None:
+        assert target.read_bytes() == b"old"
+        assert Path(source).read_bytes() == b"new"
+        original_replace(source, destination)
+
+    monkeypatch.setattr(os, "replace", observe_replace)
+    assert save_artifact(tmp_path, ArtifactFile(path="out.bin", data=b"new"), overwrite=True) == target
+    assert target.read_bytes() == b"new"
+    assert list(tmp_path.iterdir()) == [target]
+
+
+def test_artifact_overwrite_failure_preserves_original(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    target = tmp_path / "out.bin"
+    target.write_bytes(b"old")
+
+    def fail_replace(source: str | Path, destination: str | Path) -> None:
+        raise OSError("replacement failed")
+
+    monkeypatch.setattr(os, "replace", fail_replace)
+    with pytest.raises(OSError, match="replacement failed"):
+        save_artifact(tmp_path, ArtifactFile(path="out.bin", data=b"new"), overwrite=True)
+    assert target.read_bytes() == b"old"
+    assert list(tmp_path.iterdir()) == [target]
+
+
+def test_artifact_overwrite_rejects_links_and_directories(tmp_path: Path) -> None:
+    original = tmp_path / "original"
+    original.write_bytes(b"preserved")
+    (tmp_path / "link").symlink_to(original)
+    (tmp_path / "directory").mkdir()
+    for name in ("link", "directory"):
+        with pytest.raises(ConfigurationError):
+            save_artifact(tmp_path, ArtifactFile(path=name, data=b"new"), overwrite=True)
+    assert original.read_bytes() == b"preserved"
+    saved = save_artifact(tmp_path, ArtifactFile(path="new/file", data=b"new"), overwrite=True)
+    assert saved.read_bytes() == b"new"

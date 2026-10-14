@@ -126,7 +126,7 @@ uv run gj run examples/python-data --profiles examples/runtimes.toml \
 ```
 
 `check` proves transport connectivity only. `run` streams output and saves artifacts under `gj-output/`
-without silently overwriting existing files. The development group installs the CLI for local tests.
+without silently overwriting existing files. Use `--overwrite` to atomically replace regular artifact files. The development group installs the CLI for local tests.
 
 ## Contracts worth knowing
 

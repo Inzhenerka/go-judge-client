@@ -70,7 +70,11 @@ Validation messages name known field paths without printing their values or dyna
 Environment values, token contents and transport metadata are not included in CLI errors.
 
 Live output uses separate incremental UTF-8 decoders with replacement for undecodable bytes. Raw SDK
-events remain lossless. Artifacts are saved exclusively; existing files cause an error, never silent overwrite.
+events remain lossless. Existing artifact files cause an error by default. Pass `--overwrite` to replace regular files atomically:
+each file is staged in its destination directory before replacement. Symlinks, junctions and non-regular
+destinations remain forbidden. A write or replacement failure preserves the previous file and removes
+the temporary file. Replacement uses a new private file rather than preserving the old permissions.
+Atomicity applies per file, not to the entire set of artifacts. Use a private, stable output directory.
 The final line reports normalized status, exit status, CPU/elapsed seconds and memory bytes. Missing paths
 are reported as not received. No shell, browser, local listener or implicit retry is introduced.
 

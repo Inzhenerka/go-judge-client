@@ -1,8 +1,9 @@
-"""Bounded local project loading and exclusive artifact writes."""
+"""Bounded local project loading and safe artifact writes."""
 
 import os
 import stat
 import sys
+import tempfile
 from pathlib import Path
 
 if sys.version_info >= (3, 13):
@@ -77,7 +78,7 @@ def load_project(
     return result
 
 
-def save_artifact(root: Path, artifact: ArtifactFile) -> Path:
+def save_artifact(root: Path, artifact: ArtifactFile, *, overwrite: bool = False) -> Path:
     project_path(artifact.path)
     target = root / artifact.path
     if os.name == "nt" and any(
@@ -93,6 +94,25 @@ def save_artifact(root: Path, artifact: ArtifactFile) -> Path:
         if parent.is_symlink() or parent.is_junction():
             raise ConfigurationError("Artifact destination contains a symlink or junction")
     target.parent.mkdir(parents=True, exist_ok=True)
-    with target.open("xb") as stream:
-        stream.write(artifact.data)
+    if not overwrite:
+        with target.open("xb") as stream:
+            stream.write(artifact.data)
+        return target
+    try:
+        mode = target.lstat().st_mode
+    except FileNotFoundError:
+        pass
+    else:
+        if not stat.S_ISREG(mode):
+            raise ConfigurationError("Only regular artifact files can be overwritten")
+    # Stage beside the destination so replacement is atomic on the same filesystem.
+    temporary: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(dir=target.parent, prefix=".gj-artifact-", delete=False) as stream:
+            temporary = Path(stream.name)
+            stream.write(artifact.data)
+        os.replace(temporary, target)
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
     return target
