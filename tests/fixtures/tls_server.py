@@ -6,14 +6,28 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import grpc
+from google.protobuf.empty_pb2 import Empty  # ty: ignore[unresolved-import]  # Generated protobuf has no stub.
 
+from go_judge_client._grpc.file_pb2 import FileListType
 from go_judge_client._grpc.judge_pb2_grpc import ExecutorServicer, add_ExecutorServicer_to_server
+from go_judge_client._grpc.request_pb2 import Request
 from go_judge_client._grpc.response_pb2 import Response
 from go_judge_client._grpc.stream_request_pb2 import StreamRequest
 from go_judge_client._grpc.stream_response_pb2 import StreamResponse
 
 
 class Executor(ExecutorServicer):
+    def FileList(self, request: Empty, context: grpc.ServicerContext) -> FileListType:
+        if dict(context.invocation_metadata()).get("authorization") != "Bearer synthetic-secret":
+            context.abort(grpc.StatusCode.UNAUTHENTICATED, "Test credential required")
+        return FileListType()
+
+    def Exec(self, request: Request, context: grpc.ServicerContext) -> Response:
+        if dict(context.invocation_metadata()).get("authorization") != "Bearer synthetic-secret":
+            context.abort(grpc.StatusCode.UNAUTHENTICATED, "Test credential required")
+        files = {file.pipe.name: b"" for file in request.cmd[0].files if file.WhichOneof("file") == "pipe"}
+        return Response(results=[Response.Result(status=Response.Result.Accepted, files=files)])
+
     def ExecStream(
         self, request_iterator: Iterator[StreamRequest], context: grpc.ServicerContext
     ) -> Iterator[StreamResponse]:

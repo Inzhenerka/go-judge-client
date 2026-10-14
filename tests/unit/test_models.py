@@ -88,9 +88,9 @@ def test_profile_snapshot_resolution_and_wire_equivalence() -> None:
     )
     wire = wire_request(resolved, ClientBudgets())
     assert wire == wire_request(resolve(direct, {}, Limits(), ClientBudgets()), ClientBudgets())
-    assert wire.execRequest.cmd[0].files[0].WhichOneof("file") == "memory"
-    assert wire.execRequest.cmd[0].files[1].WhichOneof("file") == "streamOut"
-    assert wire.execRequest.cmd[0].copyIn["main.py"].memory.content == "λ".encode()
+    assert wire.cmd[0].files[0].WhichOneof("file") == "memory"
+    assert wire.cmd[0].files[1].WhichOneof("file") == "streamOut"
+    assert wire.cmd[0].copyIn["main.py"].memory.content == "λ".encode()
 
 
 def test_resolution_errors_and_limits_precedence() -> None:
@@ -175,7 +175,7 @@ def test_limit_inheritance_survives_snapshots_and_serialization() -> None:
     assert effective.cpu_cores is None
     resolved = resolve(request, client._runtimes, client.default_limits, client.budgets)
     assert resolved.limits == effective
-    assert wire_request(resolved, client.budgets).execRequest.cmd[0].cpuRateLimit == 0
+    assert wire_request(resolved, client.budgets).cmd[0].cpuRateLimit == 0
     inherited = client.effective_limits(ExecutionRequest(runtime="python", limits=Limits()))
     assert inherited.cpu_cores == 2 and inherited.memory_bytes == 1024**3
     assert Limits().model_dump() == {}

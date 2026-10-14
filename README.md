@@ -92,8 +92,26 @@ async def main() -> None:
 asyncio.run(main())
 ```
 
-`await client.execute(ExecutionRequest(command=("/bin/echo", "Hello")))` consumes this same
-stream and returns a bounded captured result. `execution.text_events()` handles split UTF-8 sequences and decoder finalization automatically.
+`await client.execute(ExecutionRequest(command=("/bin/echo", "Hello")))` uses unary `Exec`
+and returns a bounded captured result through the server's ordinary queue. On go-judge v1.13.3,
+`-parallelism` limits these requests across client instances and API workers.
+
+| API | RPC | Server `parallelism` | Output |
+| --- | --- | --- | --- |
+| `execute()` | `Exec` | Respected | Captured stdout/stderr and artifacts in the final result |
+| `stream()` | `ExecStream` | Bypassed | Live output events, then the final result |
+
+Both share the client's local `max_concurrency` limit. This local limit applies to one client instance;
+server `parallelism` is **not** a combined limit for ordinary and streaming work. The CLI `run` command
+uses streaming. Streaming here means live output with finite stdin; interactive stdin/TTY commands are
+not yet a public API.
+
+**Migration from 0.1.1:** `execute()` no longer drains `ExecStream`. Its signature and result model stay
+the same, but it now waits in the server queue and uses output collectors. Its operation timeout includes
+that wait. There is no automatic fallback to streaming or replay on RPC failure. Proxies must allow
+`pb.Executor/Exec` as well as `ExecStream` if both APIs are used.
+
+`execution.text_events()` handles split UTF-8 sequences and decoder finalization automatically.
 Iterating `execution` directly retains the byte-preserving `Output` API. Choose one reader per execution.
 `result.stdout_text()` and `result.stderr_text()` decode captured output, returning `None` if capture was disabled.
 Use `capture_output=False` when forwarding logs without retaining another transcript.
@@ -135,6 +153,8 @@ without silently overwriting existing files. Use `--overwrite` to atomically rep
 - `await execution.cancel()` performs bounded local cleanup. It does not prove remote process termination.
 - Artifacts and `Finished` are emitted only after a valid final response **and** successful RPC termination.
 - Missing required files and nonzero program exits are results; transport/configuration failures are exceptions.
+- `await client.check_health()` checks authenticated service access via read-only FileList;
+  it returns a boolean and does not execute code or consume an execution permit.
 - Readiness is not authentication or sandbox health. TLS is the default; plaintext is an explicit local choice.
 - There is no execution retry or fallback to polling. A failed connection can leave the remote outcome unknown.
 

@@ -8,7 +8,32 @@ from .models import ArtifactFile, ArtifactProblem, ClientBudgets, ExecutionResul
 from .profiles import ResolvedRequest
 
 
-def wire_request(resolved: ResolvedRequest, budgets: ClientBudgets) -> StreamRequest:
+def wire_request(resolved: ResolvedRequest, budgets: ClientBudgets) -> Request:
+    """Build a command with live output descriptors for ExecStream."""
+    message = _command_request(resolved, budgets)
+    for file in message.cmd[0].files[1:]:
+        file.streamOut.SetInParent()
+    _check_send_budget(StreamRequest(execRequest=message).ByteSize(), budgets)
+    return message
+
+
+def unary_request(resolved: ResolvedRequest, budgets: ClientBudgets) -> Request:
+    """Build a command with bounded output collectors for Exec."""
+    message = _command_request(resolved, budgets)
+    for fd, name in enumerate(output_names(resolved), start=1):
+        message.cmd[0].files[fd].pipe.CopyFrom(
+            Request.PipeCollector(name=name, max=budgets.output_bytes + 1, pipe=True)
+        )
+    _check_send_budget(message.ByteSize(), budgets)
+    return message
+
+
+def _check_send_budget(size: int, budgets: ClientBudgets) -> None:
+    if size > budgets.send_message_bytes - 1024:
+        raise ClientLimitExceededError("Serialized request exceeds send budget (including reserved headroom)")
+
+
+def _command_request(resolved: ResolvedRequest, budgets: ClientBudgets) -> Request:
     limits = resolved.limits
     command = Request.CmdType(
         args=resolved.command,
@@ -28,12 +53,7 @@ def wire_request(resolved: ResolvedRequest, budgets: ClientBudgets) -> StreamReq
         copyOut=[Request.CmdCopyOutFile(name=f.path, optional=not f.required) for f in resolved.request.expected_files],
         copyOutMax=budgets.artifact_bytes,
     )
-    command.files[1].streamOut.SetInParent()
-    command.files[2].streamOut.SetInParent()
-    message = StreamRequest(execRequest=Request(requestID=resolved.request_id, cmd=[command]))
-    if message.ByteSize() > budgets.send_message_bytes - 1024:
-        raise ClientLimitExceededError("Serialized request exceeds send budget (including reserved headroom)")
-    return message
+    return Request(requestID=resolved.request_id, cmd=[command])
 
 
 def final_result(
@@ -100,3 +120,33 @@ def final_result(
             f.path in artifacts and f.path not in problematic for f in expected if f.required
         ),
     )
+
+
+def output_names(resolved: ResolvedRequest) -> tuple[str, str]:
+    """Collector keys share the artifact namespace; never reserve a user's path."""
+    paths = {file.path for file in resolved.request.expected_files}
+    names = []
+    for stream in ("stdout", "stderr"):
+        name = f"__go_judge_{stream}"
+        while name in paths:
+            name += "_"
+        names.append(name)
+    return names[0], names[1]
+
+
+def buffered_result(response: Response, resolved: ResolvedRequest, budgets: ClientBudgets) -> ExecutionResult:
+    if response.error or len(response.results) != 1:
+        return final_result(response, resolved, budgets, b"", b"")
+    # Work on a copy: stripping transport-only collectors must not mutate the RPC response.
+    cleaned = Response()
+    cleaned.CopyFrom(response)
+    result = cleaned.results[0]
+    names = output_names(resolved)
+    if result.status == Response.Result.Accepted and any(name not in result.files for name in names):
+        raise ProtocolError("Successful response is missing output collectors")
+    stdout, stderr = (result.files.pop(name, b"") for name in names)
+    if len(stdout) + len(stderr) > budgets.output_bytes:
+        raise ClientLimitExceededError("Observed output exceeds client budget")
+    if any(error.name in names for error in result.fileError):
+        raise ProtocolError("Output collector failed; complete output is unavailable")
+    return final_result(cleaned, resolved, budgets, stdout, stderr)

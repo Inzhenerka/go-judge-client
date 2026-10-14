@@ -34,7 +34,7 @@ async def main() -> None:
         for _ in range(10):
             start = loop.time()
             call = rpc(timeout=5, metadata=(("authorization", f"Bearer {token}"),))
-            await call.write(wire)
+            await call.write(StreamRequest(execRequest=wire))
             await call.done_writing()
             first = None
             while True:

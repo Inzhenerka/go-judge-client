@@ -5,12 +5,19 @@ from collections.abc import Mapping
 from typing import Self, cast
 
 import grpc
+from google.protobuf.empty_pb2 import Empty  # ty: ignore[unresolved-import]  # Generated protobuf has no stub.
 from pydantic import SecretStr
 
+from ._grpc.file_pb2 import FileListType
 from ._grpc.judge_pb2_grpc import ExecutorStub
+from ._grpc.request_pb2 import Request
+from ._grpc.response_pb2 import Response
 from ._grpc.stream_request_pb2 import StreamRequest
 from ._grpc.stream_response_pb2 import StreamResponse
+from ._health import check_health
+from ._operation import Operation
 from ._tasks import join_cleanup
+from ._unary import UnaryExecution
 from .errors import ClientStateError, ConnectionError, UnknownRuntimeError
 from .execution import Execution
 from .models import (
@@ -64,11 +71,13 @@ class AsyncGoJudgeClient:
         }
         self._loop: asyncio.AbstractEventLoop | None = None
         self._channel: grpc.aio.Channel | None = None
-        self._rpc: grpc.aio.StreamStreamMultiCallable[StreamRequest, StreamResponse] | None = None
+        self._stream_rpc: grpc.aio.StreamStreamMultiCallable[StreamRequest, StreamResponse] | None = None
+        self._exec_rpc: grpc.aio.UnaryUnaryMultiCallable[Request, Response] | None = None
+        self._file_list_rpc: grpc.aio.UnaryUnaryMultiCallable[Empty, FileListType] | None = None
         self._metadata: tuple[tuple[str, str], ...] = ()
         self._closed = False
         self._close_task: asyncio.Task[None] | None = None
-        self._executions: set[Execution] = set()
+        self._executions: set[Operation] = set()
         self._semaphore = asyncio.Semaphore(max_concurrency)
 
     @property
@@ -125,9 +134,10 @@ class AsyncGoJudgeClient:
                 )
             self._channel = grpc.aio.secure_channel(config.target, credentials, options=options)
         # grpcio-tools does not type its service stub; narrow this single boundary.
-        self._rpc = cast(
-            "grpc.aio.StreamStreamMultiCallable[StreamRequest, StreamResponse]", ExecutorStub(self._channel).ExecStream
-        )
+        stub = ExecutorStub(self._channel)
+        self._file_list_rpc = cast("grpc.aio.UnaryUnaryMultiCallable[Empty, FileListType]", stub.FileList)
+        self._exec_rpc = cast("grpc.aio.UnaryUnaryMultiCallable[Request, Response]", stub.Exec)
+        self._stream_rpc = cast("grpc.aio.StreamStreamMultiCallable[StreamRequest, StreamResponse]", stub.ExecStream)
 
     async def wait_ready(self, *, timeout_seconds: float | None = None) -> None:
         self._check_open()
@@ -139,16 +149,24 @@ class AsyncGoJudgeClient:
         except TimeoutError:
             raise ConnectionError("gRPC readiness deadline exceeded") from None
 
+    async def check_health(self, *, timeout_seconds: float | None = None) -> bool:
+        """Probe service access/authentication without executing code.
+
+        Uses bounded read-only FileList; does not prove sandbox/runtime health or
+        execution capacity. RPC failures return False; local state/configuration
+        errors and external task cancellation propagate.
+        """
+        return await check_health(self, timeout_seconds)
+
     def stream(
         self, request: ExecutionRequest, *, timeout_seconds: float | None = None, capture_output: bool = True
     ) -> Execution:
         return Execution(self, request, timeout_seconds, capture_output)
 
     async def execute(self, request: ExecutionRequest, *, timeout_seconds: float | None = None) -> ExecutionResult:
-        async with self.stream(request, timeout_seconds=timeout_seconds) as execution:
-            async for _ in execution:
-                pass
-            return execution.result
+        """Run through the server queue (Exec) and return bounded output and artifacts."""
+        async with UnaryExecution(self, request, timeout_seconds) as execution:
+            return await execution.wait()
 
     async def _close(self) -> None:
         for execution in tuple(self._executions):
@@ -160,7 +178,9 @@ class AsyncGoJudgeClient:
             if self._channel is not None:
                 await self._channel.close()
                 self._channel = None
-                self._rpc = None
+                self._stream_rpc = None
+                self._exec_rpc = None
+                self._file_list_rpc = None
 
     async def aclose(self) -> None:
         self._check_loop()

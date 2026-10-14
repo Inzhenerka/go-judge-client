@@ -14,6 +14,7 @@ from go_judge_client import (
 
 
 async def consumer(client: AsyncGoJudgeClient) -> None:
+    assert_type(await client.check_health(), bool)
     assert_type(client.runtime_names, tuple[str, ...])
     assert_type(client.get_runtime("python"), RuntimeProfile)
     request = ExecutionRequest(command=("/bin/true",))

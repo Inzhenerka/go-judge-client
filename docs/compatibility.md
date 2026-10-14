@@ -7,6 +7,29 @@ They are historical evidence, not the results of the current checkout or a certi
 server images. Use the CI matrix and reproduction commands to validate a release. Local image IDs
 and benchmark results are specific to the original host.
 
+## Queued execution change (2026-10-14)
+
+`execute()` now submits unary `Exec`; `stream()` retains `ExecStream`. On upstream v1.13.3,
+`Exec` calls `worker.Submit` and observes server `parallelism`; `ExecStream` bypasses that queue.
+This does not establish a shared cap for mixed traffic.
+
+Local macOS ARM64 checks after separating the shared lifecycle and the two transport operations
+and adding authenticated health checks: 178 unit/transport/typing/CLI tests passed, eight Windows-only
+tests skipped; core coverage 97.24%. Formatting, lint, type checking and diff checks passed.
+New checks cover unary output/artifact mapping, collector-name collisions, combined output budgets,
+missing collectors in successful unary replies, valid empty output and preparation failures,
+error mapping without fallback/replay, shared local admission, and cancellation during active RPCs
+and stalled handshakes. Existing local-queue deadline/cancellation checks now exercise unary execution.
+Health checks cover cancellation, deadlines, and TLS/mTLS with valid, invalid and absent bearer tokens.
+
+A disposable `go-judge-client-review:local` container with `-parallelism 2` on this ARM64 Docker Desktop
+host produced three integration passes and ten failures. Python failed to import `encodings`; filesystem
+operations also returned `Operation not permitted`, matching the environment limitations recorded below.
+The two new independent-client overlap tests could not measure execution because their Python jobs
+failed. The container was removed. That attempt preceded the lifecycle refactor; it was not repeated against
+the same incompatible environment. This run is not real-server acceptance of the change; the concurrency
+regression and full functional suite still require a compatible native Linux executor before release.
+
 ## Dependency refresh (2026-10-14)
 
 The current pins are in `uv.lock`, `pyproject.toml`, the CI workflow and the runtime Dockerfile.

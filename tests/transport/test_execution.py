@@ -29,6 +29,7 @@ from go_judge_client import (
     ResultNotReadyError,
 )
 from go_judge_client._grpc.judge_pb2_grpc import ExecutorServicer, add_ExecutorServicer_to_server
+from go_judge_client._grpc.request_pb2 import Request
 from go_judge_client._grpc.response_pb2 import Response
 from go_judge_client._grpc.stream_request_pb2 import StreamRequest
 from go_judge_client._grpc.stream_response_pb2 import StreamResponse
@@ -44,6 +45,33 @@ class FakeExecutor(ExecutorServicer):
         self.release = asyncio.Event()
         self.output_sent = asyncio.Event()
         self.stopped = asyncio.Event()
+
+    async def Exec(self, request: Request, context: grpc.aio.ServicerContext) -> Response:
+        self.calls += 1
+        self.metadata = {key: value for key, value in (context.invocation_metadata() or ())}
+        self.requests = [StreamRequest(execRequest=request)]
+        assert all(file.WhichOneof("file") == "pipe" for file in request.cmd[0].files[1:])
+        if self.mode in {"auth", "permission", "unsupported", "non-ok"}:
+            code = {
+                "auth": grpc.StatusCode.UNAUTHENTICATED,
+                "permission": grpc.StatusCode.PERMISSION_DENIED,
+                "unsupported": grpc.StatusCode.UNIMPLEMENTED,
+                "non-ok": grpc.StatusCode.UNAVAILABLE,
+            }[self.mode]
+            await context.abort(code, "untrusted diagnostic containing synthetic-secret")
+        try:
+            self.output_sent.set()
+            if self.mode == "wait":
+                await self.release.wait()
+            files = {f.name: b"artifact" for f in request.cmd[0].copyOut if f.name != "missing"}
+            for file, data in zip(request.cmd[0].files[1:], ("€".encode(), b"err"), strict=True):
+                files[file.pipe.name] = data
+            return Response(
+                results=[Response.Result(status=Response.Result.Accepted, files=files, time=123, runTime=456)],
+                error="private" if self.mode == "service" else "",
+            )
+        finally:
+            self.stopped.set()
 
     async def ExecStream(
         self, request_iterator: AsyncIterator[StreamRequest], context: grpc.aio.ServicerContext
@@ -190,12 +218,20 @@ async def test_protocol_rejected(server: tuple[FakeExecutor, str], mode: str) ->
         ("service", RemoteServiceError),
     ],
 )
-async def test_error_mapping(server: tuple[FakeExecutor, str], mode: str, error: type[Exception]) -> None:
+@pytest.mark.parametrize("streaming", [False, True])
+async def test_error_mapping(
+    server: tuple[FakeExecutor, str], mode: str, error: type[Exception], streaming: bool
+) -> None:
     service, target = server
     service.mode = mode
     async with AsyncGoJudgeClient(target, insecure=True) as client:
         with pytest.raises(error) as caught:
-            await client.execute(request())
+            if streaming:
+                async with client.stream(request()) as execution:
+                    async for _ in execution:
+                        pass
+            else:
+                await client.execute(request())
         assert "synthetic-secret" not in str(caught.value)
     assert service.calls == 1
 
@@ -580,17 +616,17 @@ async def test_execution_concurrent_close_joins_cleanup(
 async def test_waiting_requests_do_not_build_wire_messages(
     server: tuple[FakeExecutor, str], monkeypatch: pytest.MonkeyPatch, outcome: str
 ) -> None:
-    import go_judge_client.execution as module
+    import go_judge_client._mapping as module
 
     _, target = server
     built = []
-    original = module.wire_request
+    original = module._command_request
 
     def tracked(*args, **kwargs):
         built.append(True)
         return original(*args, **kwargs)
 
-    monkeypatch.setattr(module, "wire_request", tracked)
+    monkeypatch.setattr(module, "_command_request", tracked)
     async with AsyncGoJudgeClient(target, insecure=True, max_concurrency=1) as client:
         async with client.stream(request()):
             queued = asyncio.create_task(client.execute(request(), timeout_seconds=0.05 if outcome == "expired" else 5))
@@ -611,25 +647,30 @@ async def test_waiting_requests_do_not_build_wire_messages(
         assert not client._executions
 
 
+@pytest.mark.parametrize("streaming", [False, True])
 async def test_wire_preparation_deadline_prevents_submission(
-    server: tuple[FakeExecutor, str], monkeypatch: pytest.MonkeyPatch
+    server: tuple[FakeExecutor, str], monkeypatch: pytest.MonkeyPatch, streaming: bool
 ) -> None:
     import time
 
-    import go_judge_client.execution as module
+    import go_judge_client._mapping as module
 
     service, target = server
-    original = module.wire_request
+    original = module._command_request
 
     def slow(*args, **kwargs):
         message = original(*args, **kwargs)
         time.sleep(0.02)
         return message
 
-    monkeypatch.setattr(module, "wire_request", slow)
+    monkeypatch.setattr(module, "_command_request", slow)
     async with AsyncGoJudgeClient(target, insecure=True, max_concurrency=1) as client:
         with pytest.raises(ExecutionDeadlineExceeded):
-            await client.execute(request(), timeout_seconds=0.01)
+            if streaming:
+                async with client.stream(request(), timeout_seconds=0.01):
+                    pytest.fail("Expired preparation must not submit an RPC")
+            else:
+                await client.execute(request(), timeout_seconds=0.01)
         assert service.calls == 0
         assert client._semaphore._value == 1
 
@@ -762,3 +803,128 @@ async def test_cli_text_output(server: tuple[FakeExecutor, str], tmp_path: Path)
     # gRPC may prepend native fork diagnostics when spawning from this test server.
     assert "err�" in stderr.decode() and "�\naccepted;" in stderr.decode()
     assert (output / "binary").read_bytes() == b"\0\xff"
+
+
+async def test_execute_uses_unary_with_output_and_artifacts(server: tuple[FakeExecutor, str]) -> None:
+    service, target = server
+    async with AsyncGoJudgeClient(target, insecure=True, token=SecretStr("synthetic-secret")) as client:
+        result = await client.execute(request())
+        assert result.stdout == "€".encode() and result.stderr == b"err"
+        assert result.artifacts["binary"].data == b"artifact"
+        assert set(result.artifacts) == {"binary", "empty"}
+        assert result.cpu_time_ns == 123 and result.elapsed_time_ns == 456
+        assert service.metadata["authorization"] == "Bearer synthetic-secret"
+        assert not client._executions and client._semaphore._value == 8
+    assert service.calls == 1
+
+
+@pytest.mark.parametrize("method", ["deadline", "external", "close"])
+async def test_unary_inflight_cancellation(server: tuple[FakeExecutor, str], method: str) -> None:
+    service, target = server
+    service.mode = "wait"
+    async with AsyncGoJudgeClient(target, insecure=True, max_concurrency=1) as client:
+        task = asyncio.create_task(client.execute(request(), timeout_seconds=0.1 if method == "deadline" else 5))
+        await asyncio.wait_for(service.output_sent.wait(), 2)
+        if method == "external":
+            task.cancel()
+        elif method == "close":
+            await client.aclose()
+        error = (
+            ExecutionDeadlineExceeded
+            if method == "deadline"
+            else asyncio.CancelledError
+            if method == "external"
+            else ExecutionCancelledError
+        )
+        with pytest.raises(error):
+            await asyncio.wait_for(task, 2)
+        assert not client._executions and client._semaphore._value == 1
+        assert service.calls == 1
+
+
+async def test_unary_does_not_retry_or_fallback(server: tuple[FakeExecutor, str]) -> None:
+    from go_judge_client import ConnectionError
+
+    service, target = server
+    service.mode = "non-ok"
+    async with AsyncGoJudgeClient(target, insecure=True) as client:
+        with pytest.raises(ConnectionError):
+            await client.execute(request())
+    assert service.calls == 1
+
+
+async def test_unary_aggregate_output_budget(server: tuple[FakeExecutor, str]) -> None:
+    _, target = server
+    async with AsyncGoJudgeClient(target, insecure=True, budgets=ClientBudgets(output_bytes=5)) as client:
+        with pytest.raises(ClientLimitExceededError):
+            await client.execute(request())
+        assert not client._executions and client._semaphore._value == 8
+
+
+@pytest.mark.parametrize("method", ["deadline", "external", "close"])
+async def test_unary_stalled_handshake(method: str) -> None:
+    accepted = asyncio.Event()
+    peers: list[asyncio.StreamWriter] = []
+
+    def accept(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+        peers.append(writer)
+        accepted.set()
+
+    server = await asyncio.start_server(accept, "127.0.0.1", 0)
+    port = server.sockets[0].getsockname()[1]
+    try:
+        async with AsyncGoJudgeClient(f"127.0.0.1:{port}", insecure=True, max_concurrency=1) as client:
+            task = asyncio.create_task(client.execute(request(), timeout_seconds=0.2 if method == "deadline" else 5))
+            await asyncio.wait_for(accepted.wait(), 2)
+            if method == "external":
+                task.cancel()
+            elif method == "close":
+                await asyncio.wait_for(client.aclose(), 2)
+            error = (
+                ExecutionDeadlineExceeded
+                if method == "deadline"
+                else asyncio.CancelledError
+                if method == "external"
+                else ExecutionCancelledError
+            )
+            with pytest.raises(error):
+                await asyncio.wait_for(task, 2)
+            assert not client._executions and client._semaphore._value == 1
+    finally:
+        server.close()
+        for writer in peers:
+            writer.close()
+            await writer.wait_closed()
+        await server.wait_closed()
+
+
+async def test_unary_holds_shared_permit_until_completion(server: tuple[FakeExecutor, str]) -> None:
+    service, target = server
+    service.mode = "wait"
+    async with AsyncGoJudgeClient(target, insecure=True, max_concurrency=1) as client:
+        task = asyncio.create_task(client.execute(request()))
+        await asyncio.wait_for(service.output_sent.wait(), 2)
+        with pytest.raises(ExecutionDeadlineExceeded):
+            async with client.stream(request(), timeout_seconds=0.05):
+                pytest.fail("Streaming must share the local admission limit")
+        assert service.calls == 1
+        service.release.set()
+        assert (await task).success
+        assert not client._executions and client._semaphore._value == 1
+
+
+@pytest.mark.parametrize("mutual", [False, True])
+@pytest.mark.parametrize("token", ["synthetic-secret", "wrong-token", None])
+async def test_health_tls_authentication(mutual: bool, token: str | None) -> None:
+    async with tls_peer(mutual) as (target, cert, key):
+        async with AsyncGoJudgeClient(
+            target,
+            root_certificates=cert,
+            private_key=key if mutual else None,
+            certificate_chain=cert if mutual else None,
+            token=SecretStr(token) if token is not None else None,
+        ) as client:
+            # Transport readiness succeeds independently of bearer authentication.
+            await client.wait_ready(timeout_seconds=2)
+            assert await client.check_health(timeout_seconds=2) is (token == "synthetic-secret")
+        assert client._file_list_rpc is None

@@ -46,6 +46,23 @@ metric. CLI has separate functional tests. Critical cancellation and protocol br
 The type checker includes handwritten source, tests and examples; only generated/vendor directories are
 excluded. Consumer fixtures use `assert_type` against exported APIs.
 
+## Execution architecture
+
+`AsyncGoJudgeClient` owns the channel, both RPC callables, and one local semaphore. Its active-operation
+registry includes both transports so shutdown stops queued and active work consistently.
+
+- `_operation.Operation` owns request snapshots, local admission, the end-to-end deadline, error
+  normalization, and bounded cleanup. Transport hooks submit, cancel, drain, and release RPC resources.
+- `_unary.UnaryExecution` submits `Exec` and awaits its final response. It has no event iterator or
+  streaming buffers. `execute()` awaits it directly inside the shared operation context.
+- `execution.Execution` submits `ExecStream`, owns the finite sender, and exposes the public byte/text
+  event iterator. It validates terminal status before publishing the final result.
+
+The mapping layer shares command construction and final-result validation while providing distinct
+unary-collector and streaming-descriptor builders. There is no transport-mode switch in operation
+ownership. New transport behavior should preserve shared lifecycle guarantees and add its own protocol
+tests; interactive stdin/TTY is not implemented by this split.
+
 ## Real-server functional acceptance
 
 Use a disposable Linux Docker environment. The example builds one Python runtime without installing
@@ -62,7 +79,9 @@ docker rm -f gj-client-acceptance
 ```
 
 PowerShell: `$env:GO_JUDGE_TEST_TARGET='127.0.0.1:15051'` before invoking the test command.
-An optional `GO_JUDGE_TEST_TOKEN` overrides the synthetic token. Integration fails if no target is set;
+An optional `GO_JUDGE_TEST_TOKEN` overrides the synthetic token. Set `GO_JUDGE_TEST_PARALLELISM`
+to the server's actual `-parallelism` value (default 1). The concurrency regression opens independent
+clients and compares execution intervals measured inside jobs for `execute()` and `stream()`. Integration fails if no target is set;
 missing infrastructure is not a silent pass. The outer 90-second watchdog is independent of RPC deadlines.
 These are benign functional checks; no hostile workloads or memory/process stress tests are run on shared hosts.
 

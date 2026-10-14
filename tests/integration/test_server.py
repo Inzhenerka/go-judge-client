@@ -322,3 +322,39 @@ async def test_real_socket_interruption_and_reconnect(target: str) -> None:
             writer.close()
         async with asyncio.timeout(5):
             await asyncio.gather(*tuple(handlers))
+
+
+@pytest.mark.parametrize("streaming", [False, True])
+async def test_independent_clients_server_parallelism(target: str, streaming: bool) -> None:
+    """Measure remote execution overlap, excluding network and queue wait time."""
+    import json
+
+    parallelism = int(os.environ.get("GO_JUDGE_TEST_PARALLELISM", "1"))
+    count = parallelism + 3
+    source = "import time,json; start=time.monotonic(); time.sleep(0.3); print(json.dumps([start,time.monotonic()]))"
+
+    async def run() -> tuple[float, float]:
+        async with client(target) as sdk:
+            request = ExecutionRequest(command=("/usr/local/runtimes/python-data/bin/python", "-c", source))
+            if streaming:
+                async with sdk.stream(request) as execution:
+                    async for _ in execution:
+                        pass
+                    result = execution.result
+            else:
+                result = await sdk.execute(request)
+            assert result.success, result
+            assert result.stdout is not None
+            start, end = json.loads(result.stdout)
+            return start, end
+
+    intervals = await asyncio.gather(*(run() for _ in range(count)))
+    events = sorted([(start, 1) for start, _ in intervals] + [(end, -1) for _, end in intervals])
+    active = maximum = 0
+    for _, delta in events:
+        active += delta
+        maximum = max(maximum, active)
+    if streaming:
+        assert maximum > parallelism
+    else:
+        assert maximum <= parallelism

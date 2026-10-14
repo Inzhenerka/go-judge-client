@@ -11,6 +11,17 @@ RPC completion and delivers results. There is no unbounded background output que
 readers fail. Context exit cleans up after early breaks, handler exceptions, deadlines and task cancellation.
 The local permit remains held until context finalization, including while delivering artifacts/results.
 
+`await client.execute()` uses the same operation ownership and local semaphore, but submits unary
+`Exec` and waits for a verified final response. It has no background reader and does not deliver live
+events. Stdout/stderr use bounded pipe collectors with collision-free response keys; they are removed
+before artifact validation. `output_bytes` bounds their combined returned size. Each server collector
+allows `output_bytes + 1` bytes to detect overflow, and the client rejects excess combined output.
+Unlike streaming, combined output is checked when the final response arrives; the server may execute
+the whole job before that check. Output and artifacts must fit together in `receive_message_bytes`.
+Collector failures are errors rather than silently successful truncated output. An `Accepted` unary
+response must contain both output collectors, including empty ones; missing collectors raise
+`ProtocolError`. Preparation failures can legitimately omit output.
+
 `request_id` is available before sending and is correlation only. It is not durable storage, an idempotency
 key or proof of process start. `result` raises `ResultNotReadyError` until a complete verified result exists.
 `await execution.cancel()` is idempotent and finalizes local ownership; subsequent reads raise
@@ -20,7 +31,7 @@ after that cleanup completes. The finite request sender is also owned and cancel
 handshake cannot leave its write waiter running after an operation deadline or cancellation.
 
 Timeouts default to 5 seconds for readiness, 150 seconds for the end-to-end operation, and 5 additional
-seconds for cleanup. The operation deadline starts at context entry, covers waiting for a local permit,
+seconds for cleanup. The operation deadline starts at context entry, covers waiting for a local permit and, for `execute()`, the server queue,
 and is passed to the RPC as remaining time. A timer cancels even while the consumer is paused. Quiet
 programs need not emit heartbeat output. If a consumer keeps its context open, it retains ownership and
 backpressure; it must exit the context to release its permit. No destructor cleanup is used.
@@ -28,8 +39,12 @@ backpressure; it must exit the context to release its permit. No destructor clea
 Local concurrency defaults to 8. Waiting tasks retain their input snapshots but do not build protobuf
 messages until admitted. The number of waiting tasks is not bounded by the SDK; applications should
 limit their own submission queues. It is not a distributed queue or a count of remote live processes after
-network loss. The pinned upstream ExecStream uses worker.Execute and bypasses the ordinary server
-parallelism gate. Global admission and aggregate capacity must be enforced by the deployment.
+network loss. On pinned upstream v1.13.3, `execute()` uses `Exec` → `worker.Submit`, so the server's
+`parallelism` bounds ordinary requests across all clients of that server. It counts requests, not child
+processes. `stream()` uses `ExecStream` → `worker.Execute` and bypasses that gate intentionally.
+Mixed traffic therefore has no combined server limit from `parallelism`; a deployment needing a shared
+cap for both modes must provide shared admission or separate executor pools with resource limits.
+The SDK does not add a distributed queue, persistence, or retries.
 
 ## Failure semantics
 
@@ -50,14 +65,23 @@ TLS is the default. Custom roots and optional client key/certificate pairs use s
 bearer call credentials are composed with TLS credentials. Plaintext requires `insecure=True` and sends
 the same bearer metadata once per RPC. Contradictory TLS/plaintext settings fail locally. No certificate
 verification bypass or inferred endpoint is provided. Public metadata injection is not supported, so there
-is no duplicate authorization path. The only remote RPC is ExecStream; readiness is channel-level.
+is no duplicate authorization path. The execution RPCs are Exec and ExecStream; readiness is channel-level.
 
 The pinned upstream listener itself is plaintext. Use a real gRPC-capable TLS proxy for remote TLS, keep
 the backend private, and configure client certificates there if needed. Client TLS does not enable server
 TLS. TLS and mutual TLS are tested against a disposable Python gRPC fixture, not claimed as native go-judge support.
 
 `wait_ready()` proves connectivity only. It does not validate credentials, Executor support, interpreters,
-cgroups or capacity. No HTTP /version, implicit execution, standard health service, or FileList probe is used.
+cgroups or capacity.
+
+`check_health()` performs a bounded authenticated read-only `FileList` RPC without
+executing code or acquiring an execution permit. It returns `True` for a successful
+response and `False` for RPC/authentication failures or the probe deadline. Its timeout
+defaults to `connection_seconds`; cached-list responses remain bounded by the channel
+receive budget. Client state/configuration errors and external task cancellation
+propagate. Closing the client cancels an in-flight probe and reports `False`. This is
+service access health, not proof of cgroups, available interpreters or execution capacity.
+No HTTP /version, implicit execution or standard health service is used.
 Authentication failure maps to `AuthenticationError`; proxy permission errors remain `PermissionDeniedError`;
 unimplemented methods become `CompatibilityError`. There is no login/refresh retry.
 
