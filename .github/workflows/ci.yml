@@ -27,7 +27,7 @@ jobs:
       - run: uv run poe check
       - run: uv run pytest tests/unit tests/transport tests/typing tests/cli --cov --cov-report=term-missing
       - run: uv run poe check-proto
-      - run: uv build
+      - run: uv build --clear
       - run: uv run poe check-wheel
   integration:
     runs-on: ubuntu-latest
@@ -99,17 +99,28 @@ jobs:
           python-version: '3.13'
       - if: steps.revision.outputs.current == 'true'
         run: uv sync --locked
-      - name: Version, build, validate and create GitHub Release
+      - name: Prepare and validate release locally
         if: steps.revision.outputs.current == 'true'
         id: version
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: uvx --from python-semantic-release==10.7.0 semantic-release version
+        run: uvx --from python-semantic-release==10.7.0 semantic-release version --no-push --no-vcs-release
+      - name: Save release commit, tag and notes
+        if: steps.version.outputs.released == 'true'
+        env:
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+          RELEASE_NOTES: ${{ steps.version.outputs.release_notes }}
+        run: |
+          git bundle create release.bundle main "refs/tags/$RELEASE_TAG"
+          printf '%s\n' "$RELEASE_NOTES" > release-notes.md
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: steps.version.outputs.released == 'true'
         with:
           name: release-dist
-          path: dist/*
+          path: |
+            dist/*
+            release.bundle
+            release-notes.md
           if-no-files-found: error
           retention-days: 30
   release-assets:
@@ -117,19 +128,44 @@ jobs:
     if: needs.release.outputs.released == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    concurrency:
+      group: semantic-release-main
+      cancel-in-progress: false
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: release-dist
-          path: dist
-      - name: Attach the verified distributions to GitHub Release
+          path: prepared-release
+      - name: Publish the saved release; safe to retry after a partial failure
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
           RELEASE_TAG: ${{ needs.release.outputs.tag }}
-        run: gh release upload "$RELEASE_TAG" dist/* --clobber
+          TESTED_SHA: ${{ github.sha }}
+        run: |
+          git fetch prepared-release/release.bundle main "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
+          release_sha=$(git rev-parse "$RELEASE_TAG^{commit}")
+          current=$(git ls-remote origin refs/heads/main | cut -f1)
+          if [ "$current" = "$TESTED_SHA" ]; then
+            git push --atomic origin "$release_sha:refs/heads/main" "refs/tags/$RELEASE_TAG"
+          else
+            remote_tag=$(git ls-remote origin "refs/tags/$RELEASE_TAG^{}" | cut -f1)
+            if [ "$remote_tag" != "$release_sha" ]; then
+              echo "Main moved before publication; refusing to publish an obsolete release." >&2
+              exit 1
+            fi
+          fi
+          if ! gh release view "$RELEASE_TAG" > /dev/null 2>&1; then
+            gh release create "$RELEASE_TAG" --verify-tag --title "$RELEASE_TAG" \
+              --notes-file prepared-release/release-notes.md
+          fi
+          gh release upload "$RELEASE_TAG" prepared-release/dist/* --clobber
   publish-pypi:
     needs: [package, integration, release, release-assets]
     if: >-

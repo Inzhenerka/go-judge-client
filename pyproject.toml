@@ -57,7 +57,7 @@ test-integration = "python scripts/integration_watchdog.py"
 judge = "docker run --rm --privileged --cgroupns=host --memory 512m --cpus 1 -p 127.0.0.1:15051:5051 go-judge-client-test:e9d70a0 -enable-grpc -grpc-addr :5051 -http-addr 127.0.0.1:5050 -no-fallback -parallelism 1"
 generate-proto = "python scripts/generate_proto.py"
 check-proto = "python scripts/check_proto.py"
-build = "uv build"
+build = "uv build --clear"
 check-wheel = "python scripts/check_wheel.py"
 outdated = "uvx uv-outdated --direct"
 upgrade = "uv lock --upgrade"
@@ -82,7 +82,7 @@ build_command_env = ["UV_CACHE_DIR"]
 build_command = """
 set -eu
 uv lock --upgrade-package "$PACKAGE_NAME"
-uv build
+uv build --clear
 uv run --locked python scripts/check_wheel.py
 """
 

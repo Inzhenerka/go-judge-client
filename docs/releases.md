@@ -19,8 +19,10 @@ that would tell the release tool the version was already released. Versions are 
 `chore(release): VERSION [skip ci]` and the tag is `vVERSION`.
 
 The build refreshes only project metadata in the lockfile using `uv lock --upgrade-package "$PACKAGE_NAME"`, builds wheel/sdist,
-and checks installation before pushing the release commit and tag. GitHub Release receives the same
-distributions saved as the workflow artifact `release-dist` (retained for 30 days). PyPI downloads those
+and checks installation. Before publishing anything, CI saves the distributions, release notes and a Git
+bundle containing the prepared commit and tag as the workflow artifact `release-dist` (retained for 30 days).
+A separate job pushes the commit and tag atomically, creates the GitHub Release and attaches those saved
+distributions. Retrying that job reuses the exact saved files and commit. PyPI downloads those
 GitHub Release files; it does not rebuild them.
 
 ## Enable PyPI publishing once
@@ -55,8 +57,11 @@ To publish a GitHub Release created while PyPI was disabled, enable the publishe
 then run the `CI` workflow manually on `main` with `publish_tag` set to that release (for example `v0.1.0`).
 This runs the checks and publishes existing release assets without creating a new version. A blank input
 runs CI only. If the GitHub asset upload failed, rerun that failed job first while its workflow artifact
-is still available. If release preparation failed after creating the Git tag but before saving artifacts,
-inspect that run and recover the matching distributions before attempting PyPI publication.
+is still available. If preparation or artifact storage fails, no commit or tag has been published: rerun the failed jobs.
+If publication fails after the atomic Git push, rerun only the failed jobs to resume from the saved
+artifact. Do not rerun all jobs: preparation is intentionally skipped once main has advanced.
+After artifact expiry, recover the original distributions from a backup or publish a new version;
+do not rebuild and overwrite an already published version.
 
 ## Local preview
 

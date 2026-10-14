@@ -6,8 +6,8 @@
 progress lines every half second, two stderr diagnostics and a deliberate quiet pause. Every line
 is flushed immediately. It needs no input or output artifacts:
 
-```powershell
-$env:GJ_TOKEN = 'gj-local-test-only'
+```sh
+export GJ_TOKEN='gj-local-test-only'
 uv run gj run examples/streaming-demo --profiles examples/runtimes.toml --runtime python-data --target localhost:15051 --insecure --token-env GJ_TOKEN
 ```
 

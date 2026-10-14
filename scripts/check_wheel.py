@@ -5,20 +5,37 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+import tomllib
 import zipfile
+from email.parser import BytesParser
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-wheel = next((ROOT / "dist").glob("*.whl"))
-sdist = next((ROOT / "dist").glob("*.tar.gz"))
+project = tomllib.loads((ROOT / "pyproject.toml").read_text())["project"]
+version = project["version"]
+name = project["name"].replace("-", "_")
+wheels = list((ROOT / "dist").glob("*.whl"))
+sdists = list((ROOT / "dist").glob("*.tar.gz"))
+if len(wheels) != 1 or len(sdists) != 1:
+    raise SystemExit("Expected exactly one wheel and one sdist; clean dist/ and rebuild.")
+wheel, sdist = wheels[0], sdists[0]
+if wheel.name != f"{name}-{version}-py3-none-any.whl" or sdist.name != f"{name}-{version}.tar.gz":
+    raise SystemExit(f"Expected distributions for {project['name']} {version}; clean dist/ and rebuild.")
 with zipfile.ZipFile(wheel) as archive:
     names = archive.namelist()
+    metadata = BytesParser().parsebytes(archive.read(f"{name}-{version}.dist-info/METADATA"))
+    assert metadata["Name"] == project["name"] and metadata["Version"] == version
     assert any(name.endswith("py.typed") for name in names)
     assert any(name.endswith("go_features_pb2.py") for name in names)
     assert any("licenses/proto/LICENSE" in name for name in names)
     assert not any(".research" in name or "fixtures" in name or "pumproom_api" in name for name in names)
 with tarfile.open(sdist) as archive:
     names = archive.getnames()
+    metadata_file = archive.extractfile(f"{name}-{version}/PKG-INFO")
+    assert metadata_file is not None
+    with metadata_file:
+        metadata = BytesParser().parse(metadata_file)
+    assert metadata["Name"] == project["name"] and metadata["Version"] == version
     assert any(name.endswith("proto/judge.proto") for name in names)
     assert not any(".research/" in name or ".venv/" in name for name in names)
 
