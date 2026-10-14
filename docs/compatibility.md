@@ -23,8 +23,9 @@ and benchmark results are specific to the original host.
 - The same server built for amd64 exited during startup under emulation on this ARM64 host:
   `install seccomp in container init: invalid argument`. No sandbox restrictions were disabled.
 
-Native Linux amd64 integration, SIGINT/remote-process cleanup acceptance, and the Windows matrix
-remain release gates for this checkout. Historical results below do not satisfy those gates, and no
+Native Linux amd64 integration and SIGINT/remote-process cleanup acceptance remain release gates
+for this checkout. CI covers Linux on Python 3.12–3.14. Windows is outside the support scope;
+historical Windows observations and retained defensive checks do not imply ongoing support. Historical results below do not satisfy those gates, and no
 remote CI pass is claimed for these changes.
 
 ## Pins

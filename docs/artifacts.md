@@ -41,7 +41,8 @@ it never silently truncates a supposedly complete transcript.
 SDK results do not save files. The CLI writes requested paths exclusively under the chosen output directory,
 rejecting existing symlink/junction components and existing files. Use a private directory that other processes
 cannot mutate during writes; path checks are not a substitute for OS-level directory ownership.
-On Windows, the CLI also rejects reserved device names, invalid characters and components ending in a
+The CLI retains defensive Windows path checks, although Windows is not a supported target.
+These checks reject reserved device names, invalid characters and components ending in a
 space or dot, including in the output directory. These names remain valid remote POSIX names where
 applicable; they can still be consumed as bytes through the SDK.
 

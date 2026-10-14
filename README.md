@@ -3,6 +3,7 @@
 An asynchronous, typed Python SDK for running programs on an existing **go-judge** server.
 Live stdout/stderr, named runtime profiles, binary project files, expected artifacts and explicit cancellation.
 Python 3.12+, Pydantic v2, `grpc.aio`. No web service or sandbox installer is included.
+Linux is the supported deployment platform; CI tests Python 3.12–3.14. Windows is outside the support scope.
 
 Version 0.1.0 is not published yet. Install and check a local checkout:
 

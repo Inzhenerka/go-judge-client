@@ -30,7 +30,8 @@ uv build
 ```
 
 `poe check` does not modify files. `poe prep` formats then checks; `poe fix` applies Ruff fixes.
-Dependency upgrades are explicit (`poe outdated`, `poe upgrade`). Python support is 3.12–3.14; see the
+Dependency upgrades are explicit (`poe outdated`, `poe upgrade`). CI covers Linux on Python 3.12–3.14;
+Windows is not a supported target or a release gate. See the
 compatibility report for observed versions. Comments, docs, examples and error messages are English.
 
 Protobuf is generated with `grpcio-tools==1.78.0`, using Edition 2023 sources and the vendored Go feature
