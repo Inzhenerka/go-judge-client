@@ -9,6 +9,7 @@ from typing import Annotated
 
 import typer
 from pydantic import BaseModel, ConfigDict, SecretStr, ValidationError
+from pydantic_core import PydanticCustomError
 
 from .. import (
     Artifact,
@@ -23,6 +24,7 @@ from .. import (
     RuntimeProfile,
     TextOutput,
 )
+from .._validation import MESSAGES
 from .project_files import load_project, save_artifact
 
 app = typer.Typer(no_args_is_help=True, help="Typed streaming execution on a remote go-judge server.")
@@ -59,7 +61,7 @@ def error_message(error: Exception) -> str:
             | {"runtimes"}
         )
         issues = []
-        for item in error.errors(include_input=False, include_context=False, include_url=False):
+        for item in error.errors(include_input=False, include_context=True, include_url=False):
             location = item["loc"]
             # Runtime names and environment/file keys are user data: never print them.
             safe_location = []
@@ -72,13 +74,28 @@ def error_message(error: Exception) -> str:
             reason = {
                 "missing": "required field",
                 "extra_forbidden": "unexpected field",
-                "greater_than": "must be greater than zero",
+                "greater_than": "must exceed the allowed minimum",
                 "int_type": "expected an integer",
                 "finite_number": "expected a finite number",
                 "tuple_type": "expected an argument list",
+                "float_type": "expected a number",
+                "float_parsing": "expected a number",
+                "int_parsing": "expected an integer",
+                "string_type": "expected a string",
+                "dict_type": "expected a mapping",
+                "less_than_equal": "exceeds the allowed maximum",
+                "less_than": "must be below the allowed maximum",
+                "string_too_long": "exceeds the allowed length",
+                **MESSAGES,
             }.get(item["type"], "invalid value")
+            # Only inspect a numeric constraint, never interpolate context or submitted values.
+            if item["type"] == "greater_than":
+                if item.get("ctx", {}).get("gt") == 0:
+                    reason = "must be greater than zero"
             issues.append(f"{field}: {reason}")
         return "Invalid configuration: " + "; ".join(dict.fromkeys(issues)) + "."
+    if isinstance(error, PydanticCustomError):
+        return "Invalid configuration: " + MESSAGES.get(error.type, "invalid value") + "."
     if isinstance(error, GoJudgeClientError):
         return f"{type(error).__name__}: {error}"
     if isinstance(error, FileExistsError):

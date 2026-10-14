@@ -48,7 +48,9 @@ Explicit options override environment defaults. A direct command overrides `GJ_R
 the token itself is read from `MY_JUDGE_TOKEN`. `GJ_TARGET`, `GJ_INSECURE` and `GJ_TOKEN_ENV`
 also apply to `check`; `GJ_PROFILES` also applies to `profiles`. `--no-insecure` explicitly enables TLS.
 
-Validation messages show known field paths and safe rules, never submitted values or dynamic runtime,
+Validation messages show known field paths and safe rules (for example, a nonempty command,
+a relative POSIX path, or a positive integer limit). Custom validation codes are mapped to fixed
+explanations; unknown codes retain the generic `invalid value` fallback. Messages never include submitted values or dynamic runtime,
 environment or file names.
 Profile arguments use repeatable `--arg`. `--entrypoint` overrides the profile default. For a single local
 file the profile entrypoint defaults explicitly to its basename. Direct commands must name their files

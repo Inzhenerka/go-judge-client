@@ -160,7 +160,7 @@ def test_errors_distinguish_causes_without_values(tmp_path: Path) -> None:
     with pytest.raises(ValidationError) as caught:
         ExecutionRequest.model_validate({"command": ["run"], "env": {"private-key": 123}, "private-extra": "secret"})
     message = error_message(caught.value)
-    assert "env: invalid value" in message
+    assert "env: expected a string" in message
     assert "private" not in message and "secret" not in message and "123" not in message
     assert "already exists" in error_message(FileExistsError("secret filename"))
 
@@ -280,3 +280,55 @@ def test_artifact_overwrite_rejects_links_and_directories(tmp_path: Path) -> Non
     assert original.read_bytes() == b"preserved"
     saved = save_artifact(tmp_path, ArtifactFile(path="new/file", data=b"new"), overwrite=True)
     assert saved.read_bytes() == b"new"
+
+
+@pytest.mark.parametrize(
+    ("data", "code", "explanation"),
+    [
+        ({"command": []}, "gj_command", "nonempty executable"),
+        ({"runtime": "PRIVATE_RUNTIME"}, "gj_runtime_name", "lowercase runtime name"),
+        ({"runtime": "python", "entrypoint": "../private-path"}, "gj_path", "relative POSIX path"),
+        ({"runtime": "python", "command": ["private-command"]}, "gj_execution_mode", "exactly one"),
+        ({"command": ["run"], "limits": {"cpu_seconds": "private-value"}}, "gj_number", "numeric value"),
+        ({"command": ["run"], "limits": {"memory_bytes": 1.5}}, "int_type", "expected an integer"),
+    ],
+)
+def test_actionable_validation_without_values(data: dict[str, object], code: str, explanation: str) -> None:
+    from pydantic import ValidationError
+
+    from go_judge_client import ExecutionRequest
+    from go_judge_client.cli._app import error_message
+
+    with pytest.raises(ValidationError) as caught:
+        ExecutionRequest.model_validate(data)
+    assert caught.value.errors()[0]["type"] == code
+    message = error_message(caught.value)
+    assert explanation in message
+    assert "private" not in message.lower()
+    assert "invalid value" not in message
+
+
+def test_unknown_validation_code_uses_safe_fallback() -> None:
+    from pydantic import BaseModel, ValidationError, field_validator
+    from pydantic_core import PydanticCustomError
+
+    from go_judge_client.cli._app import error_message
+
+    class FutureModel(BaseModel):
+        field: str
+
+        @field_validator("field")
+        @classmethod
+        def reject(cls, value: str) -> str:
+            raise PydanticCustomError("future_code", "private value: {value}", {"value": value})
+
+    with pytest.raises(ValidationError) as caught:
+        FutureModel(field="private-secret")
+    assert error_message(caught.value) == "Invalid configuration: configuration: invalid value."
+
+
+def test_direct_validation_code_is_readable() -> None:
+    from go_judge_client._validation import validation_error
+    from go_judge_client.cli._app import error_message
+
+    assert "Timeout must be finite and positive" in error_message(validation_error("timeout"))
