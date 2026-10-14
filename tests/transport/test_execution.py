@@ -571,3 +571,73 @@ async def test_execution_concurrent_close_joins_cleanup(
         await asyncio.wait_for(second, 2)
         assert client._semaphore._value == 1
         assert not client._executions
+
+
+@pytest.mark.parametrize("outcome", ["admitted", "cancelled", "expired"])
+async def test_waiting_requests_do_not_build_wire_messages(
+    server: tuple[FakeExecutor, str], monkeypatch: pytest.MonkeyPatch, outcome: str
+) -> None:
+    import go_judge_client.execution as module
+
+    _, target = server
+    built = []
+    original = module.wire_request
+
+    def tracked(*args, **kwargs):
+        built.append(True)
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(module, "wire_request", tracked)
+    async with AsyncGoJudgeClient(target, insecure=True, max_concurrency=1) as client:
+        async with client.stream(request()):
+            queued = asyncio.create_task(client.execute(request(), timeout_seconds=0.05 if outcome == "expired" else 5))
+            await asyncio.sleep(0.01)
+            assert len(built) == 1
+            if outcome == "cancelled":
+                queued.cancel()
+                with pytest.raises(asyncio.CancelledError):
+                    await queued
+            elif outcome == "expired":
+                with pytest.raises(ExecutionDeadlineExceeded):
+                    await queued
+            assert len(built) == 1
+        if outcome == "admitted":
+            assert (await queued).status == "accepted"
+            assert len(built) == 2
+        assert client._semaphore._value == 1
+        assert not client._executions
+
+
+async def test_wire_preparation_deadline_prevents_submission(
+    server: tuple[FakeExecutor, str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import time
+
+    import go_judge_client.execution as module
+
+    service, target = server
+    original = module.wire_request
+
+    def slow(*args, **kwargs):
+        message = original(*args, **kwargs)
+        time.sleep(0.02)
+        return message
+
+    monkeypatch.setattr(module, "wire_request", slow)
+    async with AsyncGoJudgeClient(target, insecure=True, max_concurrency=1) as client:
+        with pytest.raises(ExecutionDeadlineExceeded):
+            await client.execute(request(), timeout_seconds=0.01)
+        assert service.calls == 0
+        assert client._semaphore._value == 1
+
+
+async def test_wire_budget_failure_releases_admission(server: tuple[FakeExecutor, str]) -> None:
+    service, target = server
+    async with AsyncGoJudgeClient(
+        target, insecure=True, max_concurrency=1, budgets=ClientBudgets(send_message_bytes=2048)
+    ) as client:
+        with pytest.raises(ClientLimitExceededError):
+            await client.execute(ExecutionRequest(command=("run",), files={"large": b"x" * 2000}))
+        assert not client._executions and client._semaphore._value == 1
+        assert service.calls == 0
+        assert (await client.execute(request())).status == "accepted"

@@ -10,6 +10,7 @@ from pydantic import SecretStr
 from ._grpc.judge_pb2_grpc import ExecutorStub
 from ._grpc.stream_request_pb2 import StreamRequest
 from ._grpc.stream_response_pb2 import StreamResponse
+from ._tasks import join_cleanup
 from .errors import ClientStateError, ConnectionError, UnknownRuntimeError
 from .execution import Execution
 from .models import (
@@ -160,21 +161,7 @@ class AsyncGoJudgeClient:
         if self._close_task is None:
             self._closed = True
             self._close_task = asyncio.create_task(self._close())
-        interrupted: asyncio.CancelledError | None = None
-        while True:
-            try:
-                await asyncio.shield(self._close_task)
-                break
-            except asyncio.CancelledError as error:
-                if self._close_task.cancelled():
-                    raise
-                interrupted = error
-            except Exception:
-                if interrupted is not None:
-                    raise interrupted from None
-                raise
-        if interrupted is not None:
-            raise interrupted
+        await join_cleanup(self._close_task)
 
     async def __aenter__(self) -> Self:
         await self.start()

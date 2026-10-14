@@ -13,6 +13,7 @@ from ._grpc.response_pb2 import Response
 from ._grpc.stream_request_pb2 import StreamRequest
 from ._grpc.stream_response_pb2 import StreamResponse
 from ._mapping import final_result, wire_request
+from ._tasks import join_cleanup
 from .errors import (
     ClientLimitExceededError,
     ClientStateError,
@@ -31,7 +32,14 @@ if TYPE_CHECKING:
 
 
 class Execution:
-    """Single-use async context and iterator. Cancellation finalizes local ownership."""
+    """Single-use async context and iterator. Cancellation finalizes local ownership.
+
+    Entry snapshots input, waits for admission, then builds and sends the wire request.
+    Only the iterator reads the RPC. A final response is provisional until terminal OK.
+    The permit belongs to this context until cleanup, even after a result is available.
+    Cancellation/deadline stop owned tasks; they never cancel the application handler.
+    All close callers join one cleanup task, which releases the permit exactly once.
+    """
 
     def __init__(
         self, client: AsyncGoJudgeClient, request: ExecutionRequest, timeout_seconds: float | None, capture_output: bool
@@ -120,7 +128,6 @@ class Execution:
             client.default_limits,
             client.budgets,
         )
-        message = wire_request(self._resolved, client.budgets)
         client._executions.add(self)
         self._timer = loop.call_at(self._deadline, self._expire)
         try:
@@ -136,6 +143,11 @@ class Execution:
             self._permit = True
             self._check_outcome()
             client._check_open()
+            message = wire_request(self._resolved, client.budgets)
+            # Synchronous preparation can consume the remaining deadline without yielding.
+            if loop.time() >= self._deadline:
+                self._expire()
+                self._check_outcome()
             assert client._rpc is not None
             self._call = client._rpc(
                 timeout=max(0.000001, self._deadline - loop.time()), metadata=client._metadata, wait_for_ready=False
@@ -258,21 +270,7 @@ class Execution:
             if self._timer:
                 self._timer.cancel()
             self._close_task = asyncio.create_task(self._close())
-        interrupted: asyncio.CancelledError | None = None
-        while True:
-            try:
-                await asyncio.shield(self._close_task)
-                break
-            except asyncio.CancelledError as error:
-                if self._close_task.cancelled():
-                    raise
-                interrupted = error
-            except Exception:
-                if interrupted is not None:
-                    raise interrupted from None
-                raise
-        if interrupted is not None:
-            raise interrupted
+        await join_cleanup(self._close_task)
 
     async def _close(self) -> None:
         try:
