@@ -20,19 +20,31 @@ from ..models import project_path
 EXCLUDED = frozenset({".git", ".venv", "node_modules", "__pycache__", ".env"})
 
 
-def load_project(path: Path, budgets: ClientBudgets, *, include_excluded: bool = False) -> dict[str, bytes]:
+def load_project(
+    path: Path, budgets: ClientBudgets, *, include_excluded: bool = False, output_dir: Path | None = None
+) -> dict[str, bytes]:
     if path.is_symlink() or path.is_junction():
         raise ConfigurationError("Project source cannot be a symlink or junction")
+    # Ancestors may contain system/user aliases; the chosen source itself may not.
+    path = path.resolve()
+    excluded_output = output_dir.resolve() if output_dir is not None else None
+    if excluded_output is not None and path.is_relative_to(excluded_output):
+        raise ConfigurationError("Project source must be outside the artifact output directory")
     root = path if path.is_dir() else path.parent
     paths: list[Path] = []
     if path.is_file():
         paths.append(path)
     elif path.is_dir():
-        for parent, directories, filenames in os.walk(path, followlinks=False):
+
+        def walk_error(error: OSError) -> None:
+            raise error
+
+        for parent, directories, filenames in os.walk(path, followlinks=False, onerror=walk_error):
             directories[:] = sorted(
                 d
                 for d in directories
                 if (include_excluded or d not in EXCLUDED)
+                and Path(parent) / d != excluded_output
                 and not (Path(parent) / d).is_symlink()
                 and not (Path(parent) / d).is_junction()
             )
@@ -43,6 +55,8 @@ def load_project(path: Path, budgets: ClientBudgets, *, include_excluded: bool =
                     if len(paths) > budgets.input_files:
                         raise ClientLimitExceededError("Input file count exceeded")
     else:
+        if not path.exists():
+            raise ConfigurationError("Project source was not found. Check the project path")
         raise ConfigurationError("Project source must be a regular file or directory")
     result: dict[str, bytes] = {}
     total = 0

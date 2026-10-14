@@ -49,6 +49,34 @@ def token_from_env(name: str | None) -> SecretStr | None:
     return SecretStr(value)
 
 
+def error_message(error: Exception) -> str:
+    """Expose local error categories without remote details, values or dynamic map keys."""
+    if isinstance(error, ValidationError):
+        fields = ExecutionRequest.model_fields.keys() | RuntimeProfile.model_fields.keys() | {"runtimes"}
+        issues = []
+        for item in error.errors(include_input=False, include_context=False, include_url=False):
+            location = item["loc"]
+            field = str(location[0]) if location and location[0] in fields else "configuration"
+            reason = {"missing": "required field", "extra_forbidden": "unexpected field"}.get(
+                item["type"], "invalid value"
+            )
+            issues.append(f"{field}: {reason}")
+        return "Invalid configuration: " + "; ".join(dict.fromkeys(issues)) + "."
+    if isinstance(error, GoJudgeClientError):
+        return f"{type(error).__name__}: {error}"
+    if isinstance(error, FileExistsError):
+        return "Artifact destination already exists. Choose a new --output-dir or remove the existing file."
+    if isinstance(error, FileNotFoundError):
+        return "Local file or directory was not found. Check the project, --profiles and --stdin-file paths."
+    if isinstance(error, PermissionError):
+        return "Local file access denied. Check read permissions and --output-dir write permissions."
+    if isinstance(error, OSError):
+        return "Local file operation failed. Check file types, available space and destination permissions."
+    if isinstance(error, tomllib.TOMLDecodeError):
+        return "Invalid TOML syntax in the profiles file."
+    return "Invalid configuration. Check option values and path syntax."
+
+
 @app.command()
 def profiles(profiles: Annotated[Path, typer.Option(help="Runtime profile TOML file")]) -> None:
     """List configured names locally; this does not discover installed runtimes."""
@@ -56,8 +84,8 @@ def profiles(profiles: Annotated[Path, typer.Option(help="Runtime profile TOML f
         client = AsyncGoJudgeClient("localhost:5051", runtimes=load_profiles(profiles))
         for name in client.runtime_names:
             typer.echo(name)
-    except (OSError, ValueError, GoJudgeClientError):
-        typer.echo("Unable to validate profile configuration.", err=True)
+    except (OSError, ValueError, GoJudgeClientError) as error:
+        typer.echo(error_message(error), err=True)
         raise typer.Exit(2) from None
 
 
@@ -73,8 +101,8 @@ def check(
 
     try:
         asyncio.run(perform())
-    except (GoJudgeClientError, ValueError):
-        typer.echo("gRPC connectivity check failed.", err=True)
+    except (GoJudgeClientError, ValueError) as error:
+        typer.echo(error_message(error), err=True)
         raise typer.Exit(2) from None
     typer.echo("gRPC transport connected. Authentication, runtimes, isolation and capacity were not checked.")
 
@@ -101,7 +129,9 @@ def run(
 
     async def perform() -> int:
         budgets = ClientBudgets()
-        files = load_project(project, budgets, include_excluded=include_excluded)
+        if (runtime is None) == (command is None):
+            raise ConfigurationError("Provide exactly one of --runtime and --command")
+        files = load_project(project, budgets, include_excluded=include_excluded, output_dir=output_dir)
         stdin = b""
         if stdin_file is not None:
             with stdin_file.open("rb") as stream:
@@ -154,9 +184,7 @@ def run(
     except KeyboardInterrupt:
         typer.echo("Cancelled. Remote cleanup is not confirmed.", err=True)
         raise typer.Exit(130) from None
-    except (GoJudgeClientError, ValidationError, OSError, ValueError):
-        typer.echo(
-            "Execution failed: check configuration, connection and file budgets. No retry was attempted.", err=True
-        )
+    except (GoJudgeClientError, OSError, ValueError) as error:
+        typer.echo(error_message(error), err=True)
         raise typer.Exit(2) from None
     raise typer.Exit(code)
