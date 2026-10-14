@@ -4,7 +4,7 @@ An asynchronous, typed Python SDK for running programs on an existing **go-judge
 Live stdout/stderr, named runtime profiles, binary project files, expected artifacts and explicit cancellation.
 Python 3.12+, Pydantic v2, `grpc.aio`. No web service or sandbox installer is included.
 
-This repository is a pre-publication 0.1.0 implementation. Install from your checkout:
+Version 0.1.0 is not published yet. Install and check a local checkout:
 
 ```sh
 uv sync
@@ -76,11 +76,18 @@ Use `capture_output=False` when forwarding logs without retaining another transc
 
 The canonical executable is `go-judge-client`; `gj` is an exact alias.
 
-Start the local test server in the foreground, without authentication:
+Build the test image once, then start the local server in the foreground, without authentication
+(Docker with Linux containers is required):
 
 ```sh
+docker build -t go-judge-client-test:e9d70a0 -f examples/runtime-image/Dockerfile .
 uv run poe judge
 ```
+
+The pinned server currently fails functional acceptance on native ARM64 Docker Desktop; amd64
+emulation on that host also fails seccomp initialization. Use a native Linux amd64 server for release
+acceptance; see [current verification](docs/compatibility.md#current-checkout-verification-2026-10-14).
+The Python SDK itself is tested on macOS ARM64 and Linux ARM64.
 
 Keep that terminal open. Press `Ctrl+C` to stop and remove the container. The server is exposed only on
 `127.0.0.1:15051`, so local CLI commands do not need `--token-env`.
@@ -107,4 +114,4 @@ without silently overwriting existing files. The development group installs the 
 
 Read [CLI usage](docs/cli.md), [profiles](docs/profiles.md), [artifacts](docs/artifacts.md),
 [lifecycle and security](docs/lifecycle-and-security.md), [compatibility evidence](docs/compatibility.md),
-[development](docs/development.md), and [PumpRoom migration](docs/pumproom-integration.md).
+[development](docs/development.md), and [application integration](docs/pumproom-integration.md).

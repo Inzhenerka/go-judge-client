@@ -1,6 +1,17 @@
 # Development
 
-For a quick local server on Windows, macOS or Linux with Docker Desktop/Linux containers, run:
+For a local server, first build the runtime image, then run the foreground task:
+
+```sh
+docker build -t go-judge-client-test:e9d70a0 -f examples/runtime-image/Dockerfile .
+```
+
+Release integration requires native Linux amd64. The current pinned server fails functional acceptance
+on ARM64 Docker Desktop, and amd64 emulation there fails seccomp initialization. These failures do not
+prevent using the Python SDK from an ARM64 client connected to a compatible remote server. See the
+[current verification record](compatibility.md#current-checkout-verification-2026-10-14).
+
+Start the server:
 
 ```sh
 uv run poe judge
@@ -8,7 +19,7 @@ uv run poe judge
 
 This foreground task uses the locally built `go-judge-client-test:e9d70a0` image, binds gRPC only to
 `127.0.0.1:15051`, and enables no authentication token. Stop it with `Ctrl+C`; Docker then removes the
-container because the command uses `--rm`. Build the image first with the command below if it is absent.
+container because the command uses `--rm`.
 
 ```sh
 uv sync --locked
@@ -26,7 +37,8 @@ Protobuf is generated with `grpcio-tools==1.78.0`, using Edition 2023 sources an
 descriptor. Run `poe generate-proto` to regenerate. Only generated Python import/module paths are
 adapted; protobuf package names, descriptors, service paths and wire fields remain unchanged. `.pyi`
 and runtime modules are committed. Neither protoc nor Go is needed by package consumers. `check-proto`
-verifies source hashes and generated-file byte reproducibility. Generated modules remain private.
+verifies source hashes, the complete generated file set and generated-file byte reproducibility.
+Git attributes keep text files in LF form on every platform; schema hashes use those committed bytes. Generated modules remain private.
 
 Core tests enforce at least 90% line coverage; generated bindings and CLI are excluded from that core
 metric. CLI has separate functional tests. Critical cancellation and protocol branches have explicit tests.
@@ -62,4 +74,4 @@ project files, outputs and writable caches belong to each execution workspace. K
 targets visible in reviewed directories; do not expose all of `/etc`, `/run` or application directories to
 fix imports. Adding dependencies needs its own vulnerability review. Profiles are not a security audit,
 and the normal privileged deployment requirements remain. Different tool/egress inventories may require
-separate deployments; P0 cannot dynamically switch images.
+separate deployments; the SDK cannot dynamically switch images.

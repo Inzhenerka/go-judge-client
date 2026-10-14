@@ -8,7 +8,7 @@ Paths cannot be absolute, drive-prefixed, contain backslashes, NULs, colons, emp
 Input file/directory prefix collisions and duplicate expected paths are rejected. Expected paths cannot
 end with `?`, the upstream optional marker. Unicode and spaces are supported within configured bounds.
 
-Request artifacts using `ExpectedFile(path=..., required=True/False)`. P0 uses inline `copyOut` with a
+Request artifacts using `ExpectedFile(path=..., required=True/False)`. The SDK uses inline `copyOut` with a
 common per-file cap; it does not use cached IDs or recursive discovery. Received files are delivered in
 requested order. Empty bytes are a received file. Unrequested returned paths or cached IDs are protocol errors.
 
@@ -48,12 +48,8 @@ applicable; they can still be consumed as bytes through the SDK.
 The pinned real server rejected a workspace symlink during `Open` with `CopyOutOpen: ... not a regular file`.
 This observation does not establish general no-follow guarantees for other server versions or mounts.
 
-## Deferred P1 file streams
+## File transfer limitations
 
-P1 may use `FileAddStream`, `copyOutCached`, `FileGetStream` and deletion on the same channel. These are
-separate RPCs owned by one Python context, not one wire stream. Check support before submitting code.
-Track only IDs created by that operation, never sweep `FileList`. Validate download paths against the
-manifest, enforce per-file/aggregate budgets and bounded transfer concurrency, and commit only completed
-artifacts. Delete known IDs with an independent bounded cleanup context on every exit path. Unknown IDs
-lost before acknowledgement require server TTL and monitoring. TTL must cover legitimate transfer duration.
-No automatic cached-mode fallback or execution replay is allowed. None of these P1 APIs is implemented yet.
+Artifacts are inline in one final response. Cached file IDs, streamed upload/download and interactive
+stdin are not implemented. Large-file workflows need a separate transfer design with explicit ownership,
+size limits, deletion and server-side expiry; the client does not switch transfer modes automatically.

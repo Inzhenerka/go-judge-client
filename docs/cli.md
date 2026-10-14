@@ -34,15 +34,20 @@ Profile arguments use repeatable `--arg`. `--entrypoint` overrides the profile d
 file the profile entrypoint defaults explicitly to its basename. Direct commands must name their files
 themselves. `--stdin-file` reads bounded binary stdin. `--timeout` covers admission and execution.
 
-The project loader accepts a regular file or recursively reads a directory. It skips symlinks/junctions,
-never follows them, and excludes `.git`, `.venv`, `node_modules`, `__pycache__`, and `.env` by default.
-`--include-excluded` explicitly includes those names; inspect contents before using it. No filesystem
+The project loader accepts a regular file or recursively reads a directory. The source itself must not be a
+symlink/junction. Ancestor aliases are resolved once to establish the canonical source; symlinks/junctions
+inside a directory project are skipped. The loader excludes `.git`, `.venv`, `node_modules`, `__pycache__`, and `.env` by default.
+`--include-excluded` explicitly includes those names. The selected output directory is always excluded
+when nested inside the project, including with `--include-excluded`. A source inside the output directory
+is rejected; inspect contents before using it. No filesystem
 filter can detect every possible secret filename. Use a stable directory not concurrently modified by
 untrusted processes. Files remain bytes and use the same input/path budgets as the SDK.
 
 `--token-env NAME` explicitly reads the named environment variable in the CLI; no token is inferred by
 the core SDK. Prefer TLS for remote targets; omit `--insecure`. Custom roots/mTLS are available through
-the Python API. Environment values, token contents and transport metadata are not included in CLI errors.
+the Python API. Errors distinguish configuration, authentication, transport, budgets and local file failures.
+Validation messages name top-level fields without printing their values or dynamic dictionary keys.
+Environment values, token contents and transport metadata are not included in CLI errors.
 
 Live output uses separate incremental UTF-8 decoders with replacement for undecodable bytes. Raw SDK
 events remain lossless. Artifacts are saved exclusively; existing files cause an error, never silent overwrite.

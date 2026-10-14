@@ -6,7 +6,7 @@ closes that channel. Closed clients cannot restart; cross-loop calls raise `Clie
 owns its channel; accepting externally owned channels/metadata is deliberately not an API surface.
 
 Each `client.stream()` is single-use and requires `async with`. It validates and snapshots the request at
-entry, acquires a local permit, sends one execution, reads directly as the consumer pulls, verifies final
+entry, acquires a local permit, builds the protobuf message, sends one execution, reads directly as the consumer pulls, verifies final
 RPC completion and delivers results. There is no unbounded background output queue or reader. Concurrent
 readers fail. Context exit cleans up after early breaks, handler exceptions, deadlines and task cancellation.
 The local permit remains held until context finalization, including while delivering artifacts/results.
@@ -25,7 +25,9 @@ and is passed to the RPC as remaining time. A timer cancels even while the consu
 programs need not emit heartbeat output. If a consumer keeps its context open, it retains ownership and
 backpressure; it must exit the context to release its permit. No destructor cleanup is used.
 
-Local concurrency defaults to 8. It is not a distributed queue or a count of remote live processes after
+Local concurrency defaults to 8. Waiting tasks retain their input snapshots but do not build protobuf
+messages until admitted. The number of waiting tasks is not bounded by the SDK; applications should
+limit their own submission queues. It is not a distributed queue or a count of remote live processes after
 network loss. The pinned upstream ExecStream uses worker.Execute and bypasses the ordinary server
 parallelism gate. Global admission and aggregate capacity must be enforced by the deployment.
 
@@ -48,7 +50,7 @@ TLS is the default. Custom roots and optional client key/certificate pairs use s
 bearer call credentials are composed with TLS credentials. Plaintext requires `insecure=True` and sends
 the same bearer metadata once per RPC. Contradictory TLS/plaintext settings fail locally. No certificate
 verification bypass or inferred endpoint is provided. Public metadata injection is not supported, so there
-is no duplicate authorization path. P0's only remote RPC is ExecStream; readiness is channel-level.
+is no duplicate authorization path. The only remote RPC is ExecStream; readiness is channel-level.
 
 The pinned upstream listener itself is plaintext. Use a real gRPC-capable TLS proxy for remote TLS, keep
 the backend private, and configure client certificates there if needed. Client TLS does not enable server

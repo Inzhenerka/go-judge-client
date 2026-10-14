@@ -1,7 +1,31 @@
 # Compatibility and implementation evidence
 
-Recorded 2026-09-28. This is a local pre-publication implementation, not a production deployment or
-a certification of arbitrary go-judge images. No package was published and no remote repository was written.
+## Verification scope
+
+The observations below were recorded on 2026-09-28 and describe that development environment.
+They are historical evidence, not the results of the current checkout or a certification of arbitrary
+server images. Use the CI matrix and reproduction commands to validate a release. Local image IDs
+and benchmark results are specific to the original host.
+
+## Current checkout verification (2026-10-14)
+
+- macOS ARM64, Python 3.14.8: 102 unit/transport/typing/CLI tests passed, eight Windows-only tests
+  skipped; core line coverage 95.98%. Ruff formatting/lint and ty passed.
+- Linux ARM64, Python 3.13.15: the SDK suite and protobuf reproduction checks passed from the built
+  source distribution. This checks the client and local gRPC fixtures, not sandbox isolation.
+- Both distributions build. Clean wheel installation checks passed with and without the CLI extra.
+- Schema hashes now use LF-normalized bytes. The vendored well-known definitions match the pinned
+  compiler package after newline normalization; generated Python files reproduce byte-for-byte.
+- Native ARM64 Docker Desktop integration against the pinned server: three passed, eight failed.
+  Python could not import `encodings`; shell child execution and artifact inspection returned
+  `Operation not permitted`. The embedded aarch64 seccomp allowlist lacks `newfstatat`, unlike the
+  x86_64 list; this is a potential cause, not a proven explanation of every failure.
+- The same server built for amd64 exited during startup under emulation on this ARM64 host:
+  `install seccomp in container init: invalid argument`. No sandbox restrictions were disabled.
+
+Native Linux amd64 integration, SIGINT/remote-process cleanup acceptance, and the Windows matrix
+remain release gates for this checkout. Historical results below do not satisfy those gates, and no
+remote CI pass is claimed for these changes.
 
 ## Pins
 
@@ -24,11 +48,6 @@ a certification of arbitrary go-judge images. No package was published and no re
 The image ID is a local content ID, not a published registry manifest digest. No minimum released
 go-judge version is claimed. The server was built from source, not inferred from a release tag.
 
-PumpRoom practices were inspected at specification snapshot `a70cb207cca0149ecdc4b187dc5fabb30115b8d9`
-from the local checkout: Pydantic boundaries, uv/Poe/Ruff conventions, explicit `aclose`, `AsyncExitStack`
-and the submission/polling interface. Its current local HEAD differed; no production migration or current
-application behavior is claimed. No private snapshot or business configuration is included in the package.
-
 ## Observed acceptance
 
 - Unit, transport, typing and CLI suite: 81 tests; no required lifecycle skips. Handwritten core line coverage
@@ -49,7 +68,7 @@ application behavior is claimed. No private snapshot or business configuration i
   generated descriptors, protobuf pickling and both console aliases pass outside the source checkout.
 - Core-only wheel installs no Typer and emits a friendly extra-installation hint. Installing `[cli]` enables both aliases.
 - Wheel and sdist build locally. Wheel includes `py.typed`, generated modules/typing and third-party licenses;
-  sdist also includes source schemas, scripts, docs, examples and tests. No private research snapshots are packaged.
+  sdist also includes source schemas, scripts, docs, examples and tests. Research directories are excluded from packaging.
 
 The Linux test host is Docker Desktop 4.80.0, Engine 29.6.1, kernel 6.18, cgroup v2. Available controllers:
 `cpuset cpu io memory hugetlb pids rdma`. The disposable server used 512 MiB/one-CPU outer bounds,
@@ -74,8 +93,8 @@ The Linux test host is Docker Desktop 4.80.0, Engine 29.6.1, kernel 6.18, cgroup
    after clearing closed transport references. Neither failure was counted as a passing run.
 6. Upstream streaming bypasses ordinary worker parallelism. Local semaphores are not global admission.
    TLS proxy configuration, production isolation review and aggregate capacity remain deployment work.
-7. Inline artifacts require one final buffered message. P1 streamed upload/download, owned cached-ID cleanup,
-   TTL reconciliation and interactive stdin are documented but not implemented.
+7. Inline artifacts require one final buffered message. Streamed upload/download, cached-ID cleanup
+   and interactive stdin are not implemented.
 8. Remote cleanup under partitions, crashes and hostile filesystem workloads is not proven leak-free.
    Functional process observations are narrower than a full cgroup/temp-file forensic audit. No adversarial
    escape tests or unbounded stress workloads were run on the shared development machine.
@@ -103,4 +122,4 @@ or overhead claim follows. The execution path contains no JSON/Base64/archive co
 (labeled disposable Docker server), and `uv run python scripts/benchmark.py`.
 
 The local implementation includes CI workflows but no remote CI run is claimed. See `development.md`
-for prerequisites and cleanup commands. No P1 feature is advertised as implemented.
+for prerequisites and cleanup commands.

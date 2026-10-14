@@ -1,33 +1,23 @@
-# PumpRoom integration plan
+# Application integration example
 
-The SDK is independent of PumpRoom. `examples/pumproom_adapter.py` uses Pydantic file models, a local
-profile registry, `AsyncExitStack`, a storage Protocol and an in-memory implementation. It is executable
-and type-checkable without private imports. No production PumpRoom code is modified.
+[`examples/pumproom_adapter.py`](../examples/pumproom_adapter.py) is a framework-neutral example
+using Pydantic file models, a runtime registry, `AsyncExitStack`, a storage protocol and in-memory storage.
+It has no dependency on a private application and is intended as a starting point, not durable job storage.
 
-Create a long-lived client in application lifespan, register its `aclose`, and allocate a local attempt ID
-before submitting. Save the engine alongside each attempt so old Judge0 attempts keep their old polling
-path. Preserve submission quotas, hidden-file rules, analytics and assessment classifications. Existing
-`judge0` strings also occur in business branches and must not be blindly renamed.
+Create one long-lived client in the application lifespan and assign an attempt ID before submitting.
+The example owns its async generator with `aclosing`, so early exit or handler cancellation also closes
+the execution context. A disconnected request cannot establish whether remote execution finished;
+persist an interrupted or unknown state when completion is not verified.
 
-Add a live request-owned path alongside existing submission/polling contracts rather than forcing all
-quiz/chat/agent backends to change. Close the stream on frontend disconnect or handler cancellation;
-the example uses `aclosing` for its event generator. Persist interrupted/unknown outcomes when transport
-completion is not verified. On process restart reconcile stale running records rather than reporting
-them as still successfully running forever. Durable grading requires an independently owned application
-worker and persistent state, not a hidden SDK task.
+Forward individual stdout/stderr events, preserving order within each stream. Store selected artifacts
+under application-owned identifiers with access checks. Program success is not an assessment grade;
+required artifact availability is a separate result field.
 
-Convert text and binary task files explicitly. A text-only helper discards binary inputs and is unsuitable.
-Forward individual stdout/stderr deltas to the frontend, never the full growing transcript. Preserve per-stream
-order without promising exact cross-stream chronology. Keep protobuf out of browser messages.
+For jobs that must survive HTTP disconnects or application restarts, use an application worker with
+persistent job state and an explicit reconciliation policy. The SDK does not provide a durable queue.
+When migrating from another engine, record the engine per attempt so existing jobs retain their own
+completion and polling semantics.
 
-Keep source/editor inputs distinct from generated artifacts. Persist selected artifacts under application-owned
-identifiers with access checks. Artifact metadata may be represented in existing backend output, but program
-success is not a grade and missing artifacts are educational feedback. Hidden files supplied to code are not
-secret from that code. Never put reusable application credentials into profiles; intentionally granted
-per-execution credentials require separate scoping and policy.
-
-Reuse task-specific knowledge about Python, Cargo, dbt, Java and Playwright in profiles or small application
-wrappers. Profiles do not install tools, change images or configure network isolation. Deploy network-enabled
-tasks to appropriately reviewed egress environments. Compile/run stages remain distinguishable application
-operations; multiple go-judge commands are not a sequential pipeline. Prefer native expected-file collection
-over appending export commands after an `exec` that can prevent them from running.
+Only expose approved profiles, arguments and resource limits to users. Files supplied to executing code
+are visible to that code, including hidden test inputs. Profiles do not install runtimes or configure
+sandbox mounts, credentials or network access; those remain deployment responsibilities.
