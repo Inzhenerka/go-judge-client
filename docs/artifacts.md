@@ -54,3 +54,21 @@ This observation does not establish general no-follow guarantees for other serve
 Artifacts are inline in one final response. Cached file IDs, streamed upload/download and interactive
 stdin are not implemented. Large-file workflows need a separate transfer design with explicit ownership,
 size limits, deletion and server-side expiry; the client does not switch transfer modes automatically.
+
+## Text output
+
+Use `execution.text_events(encoding="utf-8", errors="replace")` inside the execution context to
+receive `TextOutput(stream="stdout" | "stderr", text=...)` instead of byte `Output` events.
+`Artifact` and `Finished` pass through unchanged. Decoders are independent for stdout and stderr;
+characters split across wire messages are joined, empty text events are suppressed, and trailing
+text is emitted before `Finished` only after successful RPC termination. Events are chunks, not lines.
+Transport errors propagate without a final flush or `Finished`; already delivered text remains provisional.
+With `errors="strict"`, decoding errors propagate and close the local execution.
+
+Choose byte iteration or one text iterator for the lifetime of an execution; switching readers midway
+or creating a second text iterator raises `ClientStateError`. Always keep the execution context around
+the loop, including when breaking early. Text decoding does not change byte-based output budgets or
+captured results. `TextDecoder` remains available for manual decoding.
+
+`result.stdout_text(encoding="utf-8", errors="replace")` and `result.stderr_text(...)` decode captured
+bytes. They return `None` when capture was disabled and `""` for empty captured output.

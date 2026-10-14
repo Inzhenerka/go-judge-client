@@ -345,6 +345,14 @@ class ExecutionResult(Model):
     def elapsed_seconds(self) -> float:
         return self.elapsed_time_ns / 1e9
 
+    def stdout_text(self, *, encoding: str = "utf-8", errors: str = "replace") -> str | None:
+        """Decode captured stdout; None means output capture was disabled."""
+        return self.stdout.decode(encoding, errors) if self.stdout is not None else None
+
+    def stderr_text(self, *, encoding: str = "utf-8", errors: str = "replace") -> str | None:
+        """Decode captured stderr; None means output capture was disabled."""
+        return self.stderr.decode(encoding, errors) if self.stderr is not None else None
+
     def summary(self) -> ResultSummary:
         return ResultSummary(
             request_id=self.request_id,

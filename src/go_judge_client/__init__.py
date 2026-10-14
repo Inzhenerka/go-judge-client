@@ -17,7 +17,7 @@ from .errors import (
     ResultNotReadyError,
     UnknownRuntimeError,
 )
-from .events import Artifact, ExecutionEvent, Finished, Output
+from .events import Artifact, ExecutionEvent, Finished, Output, TextExecutionEvent, TextOutput
 from .execution import Execution
 from .models import (
     ArtifactFile,
@@ -69,6 +69,8 @@ __all__ = [
     "ResultSummary",
     "RuntimeProfile",
     "TextDecoder",
+    "TextExecutionEvent",
+    "TextOutput",
     "Timeouts",
     "UnknownRuntimeError",
 ]

@@ -13,6 +13,12 @@ class Output:
 
 
 @dataclass(frozen=True, slots=True)
+class TextOutput:
+    stream: Literal["stdout", "stderr"]
+    text: str = field(repr=False)
+
+
+@dataclass(frozen=True, slots=True)
 class Artifact:
     file: ArtifactFile
 
@@ -23,3 +29,5 @@ class Finished:
 
 
 type ExecutionEvent = Output | Artifact | Finished
+
+type TextExecutionEvent = TextOutput | Artifact | Finished

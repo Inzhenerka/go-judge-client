@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from collections import deque
+from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING, Self
 from uuid import uuid4
 
@@ -23,9 +24,10 @@ from .errors import (
     ResultNotReadyError,
     rpc_error,
 )
-from .events import Artifact, ExecutionEvent, Finished, Output
+from .events import Artifact, ExecutionEvent, Finished, Output, TextExecutionEvent, TextOutput
 from .models import ExecutionRequest, ExecutionResult, timeout_value
 from .profiles import ResolvedRequest, resolve
+from .text import TextDecoder
 
 if TYPE_CHECKING:
     from .client import AsyncGoJudgeClient
@@ -72,6 +74,7 @@ class Execution:
         self.first_output_at: float | None = None
         self.finished_at: float | None = None
         self._reading = False
+        self._reader_mode: str | None = None
         self._deadline = 0.0
 
     @property
@@ -177,6 +180,46 @@ class Execution:
         return self
 
     async def __anext__(self) -> ExecutionEvent:
+        if self._reader_mode == "text":
+            raise ClientStateError("Cannot mix byte and text readers")
+        self._reader_mode = "bytes"
+        return await self._next_event()
+
+    def text_events(self, *, encoding: str = "utf-8", errors: str = "replace") -> AsyncIterator[TextExecutionEvent]:
+        """Select a single text reader; flush decoder tails before Finished on successful RPC completion."""
+        self._client._check_loop()
+        if not self._entered:
+            raise ClientStateError("Enter the execution context before iterating")
+        self._check_outcome()
+        if self._reader_mode is not None:
+            raise ClientStateError("Cannot mix or replace execution readers")
+        decoder = TextDecoder(encoding, errors)
+        self._reader_mode = "text"
+        return self._text_events(decoder)
+
+    async def _text_events(self, decoder: TextDecoder) -> AsyncIterator[TextExecutionEvent]:
+        try:
+            while True:
+                try:
+                    event = await self._next_event()
+                except StopAsyncIteration:
+                    return
+                if isinstance(event, Output):
+                    text = decoder.decode(event)
+                    if text:
+                        yield TextOutput(event.stream, text)
+                else:
+                    if isinstance(event, Finished):
+                        for stream in ("stdout", "stderr"):
+                            text = decoder.finish(stream)
+                            if text:
+                                yield TextOutput(stream, text)
+                    yield event
+        except Exception as error:
+            await self._cleanup_preserving(error)
+            raise
+
+    async def _next_event(self) -> ExecutionEvent:
         self._client._check_loop()
         if not self._entered:
             raise ClientStateError("Enter the execution context before iterating")

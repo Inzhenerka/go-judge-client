@@ -9,6 +9,7 @@ from go_judge_client import (
     Output,
     ResolvedLimits,
     RuntimeProfile,
+    TextOutput,
 )
 
 
@@ -19,6 +20,8 @@ async def consumer(client: AsyncGoJudgeClient) -> None:
     result = await client.execute(request)
     assert_type(result, ExecutionResult)
     assert_type(result.success, bool)
+    assert_type(result.stdout_text(), str | None)
+    assert_type(result.stderr_text(), str | None)
     assert_type(result.status, ExecutionStatus)
     assert_type(client.effective_limits(request), ResolvedLimits)
     async with client.stream(request) as execution:
@@ -28,6 +31,10 @@ async def consumer(client: AsyncGoJudgeClient) -> None:
             if isinstance(event, Output):
                 assert_type(event.data, bytes)
         assert_type(execution.result, ExecutionResult)
+    async with client.stream(request) as execution:
+        async for event in execution.text_events():
+            if isinstance(event, TextOutput):
+                assert_type(event.text, str)
 
 
 def test_exports() -> None:

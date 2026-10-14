@@ -74,6 +74,9 @@ class FakeExecutor(ExecutorServicer):
                 await self.release.wait()
             yield StreamResponse(execOutput=StreamResponse.Output(fd=1, content=b"\xac"))
             yield StreamResponse(execOutput=StreamResponse.Output(fd=2, content=b"err"))
+            if self.mode in {"text-tail", "text-tail-non-ok"}:
+                yield StreamResponse(execOutput=StreamResponse.Output(fd=1, content=b"\xe2"))
+                yield StreamResponse(execOutput=StreamResponse.Output(fd=2, content=b"\xff\xe2"))
             files = {
                 f.name: (b"" if f.name == "empty" else b"\0\xff")
                 for f in self.requests[0].execRequest.cmd[0].copyOut
@@ -98,7 +101,7 @@ class FakeExecutor(ExecutorServicer):
                 yield final
             if self.mode == "late-output":
                 yield StreamResponse(execOutput=output)
-            if self.mode == "non-ok":
+            if self.mode in {"non-ok", "text-tail-non-ok"}:
                 await context.abort(grpc.StatusCode.UNAVAILABLE, "private")
         finally:
             self.stopped.set()
@@ -641,3 +644,112 @@ async def test_wire_budget_failure_releases_admission(server: tuple[FakeExecutor
         assert not client._executions and client._semaphore._value == 1
         assert service.calls == 0
         assert (await client.execute(request())).status == "accepted"
+
+
+async def test_text_events_decode_and_flush(server: tuple[FakeExecutor, str]) -> None:
+    from go_judge_client import TextOutput
+
+    service, target = server
+    service.mode = "text-tail"
+    async with AsyncGoJudgeClient(target, insecure=True) as client:
+        async with client.stream(request()) as execution:
+            events = [event async for event in execution.text_events()]
+            text = [event for event in events if isinstance(event, TextOutput)]
+            assert text == [
+                TextOutput("stdout", "€"),
+                TextOutput("stderr", "err"),
+                TextOutput("stderr", "�"),
+                TextOutput("stdout", "�"),
+                TextOutput("stderr", "�"),
+            ]
+            assert isinstance(events[-1], Finished)
+            assert len([event for event in events if isinstance(event, Artifact)]) == 2
+            assert execution.result.stdout_text() == "€�"
+            assert execution.result.stderr_text() == "err��"
+            with pytest.raises(UnicodeDecodeError):
+                execution.result.stdout_text(errors="strict")
+
+
+async def test_text_reader_owns_the_stream(server: tuple[FakeExecutor, str]) -> None:
+    _, target = server
+    async with AsyncGoJudgeClient(target, insecure=True) as client:
+        async with client.stream(request(), capture_output=False) as execution:
+            reader = execution.text_events()
+            with pytest.raises(ClientStateError):
+                await anext(execution)
+            with pytest.raises(ClientStateError):
+                execution.text_events()
+            events = [event async for event in reader]
+            assert isinstance(events[-1], Finished)
+            assert execution.result.stdout_text() is None
+            assert execution.result.stderr_text() is None
+            assert execution.result.model_copy(update={"stdout": b"", "stderr": b""}).stdout_text() == ""
+        async with client.stream(request()) as execution:
+            await anext(execution)
+            with pytest.raises(ClientStateError):
+                execution.text_events()
+
+
+@pytest.mark.parametrize("mode,errors", [("text-tail", "strict"), ("text-tail-non-ok", "replace")])
+async def test_text_errors_do_not_emit_finished(server: tuple[FakeExecutor, str], mode: str, errors: str) -> None:
+    from go_judge_client import GoJudgeClientError, TextOutput
+
+    service, target = server
+    service.mode = mode
+    async with AsyncGoJudgeClient(target, insecure=True, max_concurrency=1) as client:
+        events = []
+        async with client.stream(request()) as execution:
+            with pytest.raises(UnicodeDecodeError if errors == "strict" else GoJudgeClientError):
+                async for event in execution.text_events(errors=errors):
+                    events.append(event)
+            assert not any(isinstance(event, Finished) for event in events)
+            # An unverified RPC does not flush its trailing partial characters.
+            if mode == "text-tail-non-ok":
+                assert [event.text for event in events if isinstance(event, TextOutput)] == ["€", "err", "�"]
+        service.mode = "normal"
+        assert (await client.execute(request())).success
+
+
+async def test_text_reader_cancellation_releases_slot(server: tuple[FakeExecutor, str]) -> None:
+    service, target = server
+    service.mode = "wait"
+    async with AsyncGoJudgeClient(target, insecure=True, max_concurrency=1) as client:
+        async with client.stream(request()) as execution:
+            reader = execution.text_events()
+            task = asyncio.ensure_future(anext(reader))
+            await asyncio.wait_for(service.output_sent.wait(), 1)
+            task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+        assert not client._executions and client._semaphore._value == 1
+
+
+async def test_cli_text_output(server: tuple[FakeExecutor, str], tmp_path: Path) -> None:
+    service, target = server
+    service.mode = "text-tail"
+    source = tmp_path / "main.py"
+    source.write_text("placeholder")
+    process = await asyncio.create_subprocess_exec(
+        sys.executable,
+        "-c",
+        "from go_judge_client.cli import main; main()",
+        "run",
+        str(source),
+        "--target",
+        target,
+        "--insecure",
+        "--",
+        "run",
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    try:
+        stdout, stderr = await asyncio.wait_for(process.communicate(), 10)
+    finally:
+        if process.returncode is None:
+            process.kill()
+            await process.wait()
+    assert process.returncode == 0
+    assert stdout.decode() == "€�"
+    # gRPC may prepend native fork diagnostics when spawning from this test server.
+    assert "err��\naccepted;" in stderr.decode()

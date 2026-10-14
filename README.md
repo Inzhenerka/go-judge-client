@@ -27,7 +27,7 @@ from go_judge_client import AsyncGoJudgeClient, ExecutionRequest
 async def main() -> None:
     async with AsyncGoJudgeClient("localhost:15051", insecure=True) as client:
         result = await client.execute(ExecutionRequest(command=("/bin/echo", "Hello")))
-        print((result.stdout or b"").decode())
+        print(result.stdout_text())
         print(result.success, result.status)
 
 
@@ -50,7 +50,7 @@ from go_judge_client import (
     ExecutionRequest,
     RuntimeProfile,
     ExpectedFile,
-    Output,
+    TextOutput,
     Artifact,
     Finished,
 )
@@ -79,10 +79,10 @@ async def main() -> None:
             expected_files=(ExpectedFile(path="result.bin"),),
         )
         async with client.stream(request) as execution:
-            async for event in execution:
+            async for event in execution.text_events():
                 match event:
-                    case Output(stream=stream, data=data):
-                        print(stream, data)
+                    case TextOutput(stream=stream, text=text):
+                        print(stream, text, end="")
                     case Artifact(file=file):
                         print(file.path, file.size_bytes)
                     case Finished(result=result):
@@ -93,7 +93,9 @@ asyncio.run(main())
 ```
 
 `await client.execute(ExecutionRequest(command=("/bin/echo", "Hello")))` consumes this same
-stream and returns a bounded captured result. `TextDecoder` handles split UTF-8 sequences.
+stream and returns a bounded captured result. `execution.text_events()` handles split UTF-8 sequences and decoder finalization automatically.
+Iterating `execution` directly retains the byte-preserving `Output` API. Choose one reader per execution.
+`result.stdout_text()` and `result.stderr_text()` decode captured output, returning `None` if capture was disabled.
 Use `capture_output=False` when forwarding logs without retaining another transcript.
 
 ## Terminal playground

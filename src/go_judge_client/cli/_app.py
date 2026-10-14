@@ -20,9 +20,8 @@ from .. import (
     Finished,
     GoJudgeClientError,
     Limits,
-    Output,
     RuntimeProfile,
-    TextDecoder,
+    TextOutput,
 )
 from .project_files import load_project, save_artifact
 
@@ -178,7 +177,6 @@ def run(
                 + [ExpectedFile(path=p, required=False) for p in optional_expect or ()]
             ),
         )
-        decoder = TextDecoder()
         async with AsyncGoJudgeClient(
             target,
             insecure=insecure,
@@ -187,17 +185,15 @@ def run(
             budgets=budgets,
         ) as client:
             async with client.stream(request, timeout_seconds=timeout, capture_output=False) as execution:
-                async for event in execution:
-                    if isinstance(event, Output):
+                async for event in execution.text_events():
+                    if isinstance(event, TextOutput):
                         destination = sys.stdout if event.stream == "stdout" else sys.stderr
-                        destination.write(decoder.decode(event))
+                        destination.write(event.text)
                         destination.flush()
                     elif isinstance(event, Artifact):
                         saved = save_artifact(output_dir, event.file)
                         typer.echo(f"Saved: {saved}", err=True)
                     elif isinstance(event, Finished):
-                        sys.stdout.write(decoder.finish("stdout"))
-                        sys.stderr.write(decoder.finish("stderr"))
                         result = event.result
                         typer.echo(
                             f"\n{result.status}; exit={result.exit_status}; cpu={result.cpu_seconds:.6f}s; "
