@@ -1,7 +1,7 @@
 {
   "file.proto": "bb165f55d8fec44021cff1d96f4a8b174be3d35dd1e7c9928cb351896447e3e2",
-  "google/protobuf/descriptor.proto": "2f4fd39965be4319a71a7171f2f27d885bbdc05e5019e4fe2f540a9fc4548a8d",
-  "google/protobuf/empty.proto": "77f67317c2372ce8088af9ded424300fe315b681a728ad19d70faee051ce2fd8",
+  "google/protobuf/descriptor.proto": "428bd7cfc74c4e53dcab06d37080aa589452c2f93360bcbaccd5d1d78a50e8b1",
+  "google/protobuf/empty.proto": "ecef3d54cc9e079673b9816c67bac770f7f3bf6dada2d4596ba69d71daa971e6",
   "google/protobuf/go_features.proto": "2eccebaf069c15c7a3ac8d75dd2fdcd0f1307bf994969fcd6d1b7d63a5ab5485",
   "judge.proto": "eb6a64fb7415174357bb98de7fe962c55ccc35e2757eb6e9241e74e62dc41eb8",
   "request.proto": "5545761bfb4b5adaec5f4020f9deb01eb75d06bd8d1f38e784b6381440bf4866",
