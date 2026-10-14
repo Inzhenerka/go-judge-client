@@ -182,3 +182,58 @@ def test_sdk_error_categories_hide_exception_causes(error_type: str, label: str)
     error = getattr(go_judge_client, error_type)("Safe local message")
     error.__cause__ = RuntimeError("private-remote-details")
     assert error_message(error) == f"{label}: Safe local message"
+
+
+def test_cli_direct_argv_and_environment(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from go_judge_client import AsyncGoJudgeClient, Execution, ExecutionRequest
+    from go_judge_client.cli import _app
+
+    captured: list[tuple[ExecutionRequest, str, bool]] = []
+
+    class RecordingClient(AsyncGoJudgeClient):
+        async def start(self) -> None:
+            pass
+
+        def stream(
+            self, request: ExecutionRequest, *, timeout_seconds: float | None = None, capture_output: bool = True
+        ) -> Execution:
+            captured.append((request, self._config.target, self._config.insecure))
+            raise ConfigurationError("Recorded without executing")
+
+    monkeypatch.setattr(_app, "AsyncGoJudgeClient", RecordingClient)
+    monkeypatch.setenv("GJ_TARGET", "example.invalid:5051")
+    monkeypatch.setenv("GJ_INSECURE", "true")
+    monkeypatch.setenv("GJ_RUNTIME", "python")
+    profiles = tmp_path / "runtimes.toml"
+    profiles.write_text('[runtimes.python]\ncommand=["python"]')
+    monkeypatch.setenv("GJ_PROFILES", str(profiles))
+    source = tmp_path / "main.py"
+    source.write_text("print('hello')")
+    result = runner.invoke(app, ["run", str(source), "--", "python", "-u", "main.py", "--target", "literal"])
+    assert "Recorded" in result.output
+    request, target, insecure = captured[-1]
+    assert request.command == ("python", "-u", "main.py", "--target", "literal")
+    assert request.runtime is None and target == "example.invalid:5051" and insecure
+    result = runner.invoke(app, ["run", str(source), "--target", "override:1", "--no-insecure"])
+    assert "Recorded" in result.output
+    request, target, insecure = captured[-1]
+    assert request.runtime == "python" and target == "override:1" and not insecure
+    result = runner.invoke(app, ["run", str(source), "--command", "python", "--command=-u", "--command", "main.py"])
+    assert "Recorded" in result.output and captured[-1][0].command == ("python", "-u", "main.py")
+    for arguments in [
+        ["--runtime", "python", "--", "python"],
+        ["--command", "python", "--", "python"],
+    ]:
+        before = len(captured)
+        result = runner.invoke(app, ["run", str(source), *arguments])
+        assert result.exit_code == 2 and len(captured) == before
+    assert runner.invoke(app, ["profiles"]).stdout.strip() == "python"
+
+
+def test_nested_profile_diagnostics_hide_names_and_values(tmp_path: Path) -> None:
+    profile = tmp_path / "profiles.toml"
+    profile.write_text('[runtimes.private-name]\ncommand=["python"]\n[runtimes.private-name.limits]\nmemory_bytes=-731')
+    result = runner.invoke(app, ["profiles", "--profiles", str(profile)])
+    assert result.exit_code == 2
+    assert "runtimes.limits.memory_bytes: must be greater than zero" in result.output
+    assert "private-name" not in result.output and "731" not in result.output

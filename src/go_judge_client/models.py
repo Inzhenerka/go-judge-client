@@ -2,9 +2,19 @@
 
 import math
 import re
+from enum import StrEnum
 from typing import Annotated, Self
 
-from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    SecretStr,
+    SerializerFunctionWrapHandler,
+    field_validator,
+    model_serializer,
+    model_validator,
+)
 
 type PositiveInt = Annotated[int, Field(strict=True, gt=0, le=2**63 - 1)]
 type Seconds = Annotated[float, Field(gt=0, le=(2**63 - 1) / 1e9, allow_inf_nan=False)]
@@ -36,7 +46,7 @@ class Model(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True, hide_input_in_errors=True, validate_default=True)
 
 
-class Limits(Model):
+class ResolvedLimits(Model):
     cpu_seconds: Seconds = 10
     wall_seconds: Seconds = 30
     memory_bytes: PositiveInt = 256 * 1024**2
@@ -58,6 +68,37 @@ class Limits(Model):
         if self.cpu_cores is not None and int(self.cpu_cores * 1000) < 1:
             raise ValueError("CPU rate is below wire precision")
         return self
+
+
+class Limits(ResolvedLimits):
+    """Field overrides. Omitted fields inherit; explicit cpu_cores=None clears its limit."""
+
+    @model_serializer(mode="wrap")
+    def serialize_overrides(self, handler: SerializerFunctionWrapHandler) -> dict[str, object]:
+        values = handler(self)
+        return {key: value for key, value in values.items() if key in self.model_fields_set}
+
+
+def resolve_limits(*layers: Limits | None) -> ResolvedLimits:
+    values = ResolvedLimits().model_dump()
+    for layer in layers:
+        if layer is not None:
+            values.update(layer.model_dump())
+    return ResolvedLimits.model_validate(values)
+
+
+class ExecutionStatus(StrEnum):
+    INVALID = "invalid"
+    ACCEPTED = "accepted"
+    MEMORY_LIMIT_EXCEEDED = "memory_limit_exceeded"
+    TIME_LIMIT_EXCEEDED = "time_limit_exceeded"
+    OUTPUT_LIMIT_EXCEEDED = "output_limit_exceeded"
+    FILE_ERROR = "file_error"
+    NONZERO_EXIT = "nonzero_exit"
+    SIGNALLED = "signalled"
+    DANGEROUS_SYSCALL = "dangerous_syscall"
+    INTERNAL_ERROR = "internal_error"
+    UNKNOWN = "unknown"
 
 
 class Timeouts(Model):
@@ -237,7 +278,7 @@ class ArtifactProblem(Model):
 class ResultSummary(Model):
     request_id: str
     runtime: str | None
-    status: str
+    status: ExecutionStatus
     exit_status: int
     cpu_time_ns: int
     elapsed_time_ns: int
@@ -250,7 +291,7 @@ class ResultSummary(Model):
 class ExecutionResult(Model):
     request_id: str
     runtime: str | None
-    status: str
+    status: ExecutionStatus
     upstream_status: int
     upstream_status_name: str
     exit_status: int
@@ -265,6 +306,11 @@ class ExecutionResult(Model):
     artifact_problems: tuple[ArtifactProblem, ...]
     not_received: tuple[str, ...]
     required_artifacts_satisfied: bool
+
+    @property
+    def success(self) -> bool:
+        """Accepted execution with every required artifact received without a file error."""
+        return self.status == ExecutionStatus.ACCEPTED and self.required_artifacts_satisfied
 
     @property
     def cpu_seconds(self) -> float:

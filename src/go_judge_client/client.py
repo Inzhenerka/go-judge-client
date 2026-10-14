@@ -19,8 +19,10 @@ from .models import (
     ExecutionRequest,
     ExecutionResult,
     Limits,
+    ResolvedLimits,
     RuntimeProfile,
     Timeouts,
+    resolve_limits,
     runtime_name,
     timeout_value,
 )
@@ -79,6 +81,12 @@ class AsyncGoJudgeClient:
             return self._runtimes[name].model_copy(deep=True)
         except KeyError:
             raise UnknownRuntimeError("Runtime is not registered") from None
+
+    def effective_limits(self, request: ExecutionRequest) -> ResolvedLimits:
+        """Inspect inherited execution limits without opening a connection or running code."""
+        request = ExecutionRequest.model_validate(request.model_dump())
+        profile = self.get_runtime(request.runtime) if request.runtime is not None else None
+        return resolve_limits(self.default_limits, profile.limits if profile else None, request.limits)
 
     def _check_loop(self) -> None:
         if self._loop is not None and self._loop is not asyncio.get_running_loop():

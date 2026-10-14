@@ -29,7 +29,21 @@ when neither an override nor a default exists. `None` selects the default; it do
 The resolved entrypoint must be present in project files. No shell expansion or `/box` prefix is added.
 
 Environment precedence is profile followed by request. The client never inherits its process environment.
-Limits are selected as complete objects: request, profile, then client defaults. No partial merge occurs.
+Limits inherit **per field**: built-in defaults → client `default_limits` → profile → request.
+Only explicitly supplied fields override earlier layers. `Limits()` and `limits=None` inherit everything.
+For example, a profile with `Limits(memory_bytes=1024**3)` and a request with `Limits(cpu_seconds=2)`
+produce 1 GiB of memory and 2 CPU seconds, preserving other client defaults.
+
+Zero, negative values and explicit `None` for mandatory fields are invalid. For optional `cpu_cores`,
+omitting the field inherits the rate limit; explicitly setting `None` removes that rate limit only.
+`Limits.model_dump()` and nested request/profile serialization retain only explicitly supplied fields,
+including an explicit `cpu_cores=None`; copy/JSON round trips preserve inheritance.
+Do not use individual attributes of an override object to inspect effective limits. Use
+`client.effective_limits(request)`, which returns a complete `ResolvedLimits` without connecting or
+executing code. Its `model_dump()` includes every effective field.
+
+Profiles provide defaults, not security ceilings: requests may raise limits. Enforce mandatory maximums
+separately in your application or server.
 Limits default to 10 CPU seconds, 30 wall seconds, 256 MiB memory, 64 MiB stack and 32 processes.
 Optional `cpu_cores` maps one core to 1000 wire units and requires a deployment with CPU-rate control enabled.
 CPU time and wall time are distinct from the operation deadline.

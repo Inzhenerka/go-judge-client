@@ -1,13 +1,26 @@
 from typing import assert_type
 
-from go_judge_client import AsyncGoJudgeClient, Execution, ExecutionRequest, ExecutionResult, Output, RuntimeProfile
+from go_judge_client import (
+    AsyncGoJudgeClient,
+    Execution,
+    ExecutionRequest,
+    ExecutionResult,
+    ExecutionStatus,
+    Output,
+    ResolvedLimits,
+    RuntimeProfile,
+)
 
 
 async def consumer(client: AsyncGoJudgeClient) -> None:
     assert_type(client.runtime_names, tuple[str, ...])
     assert_type(client.get_runtime("python"), RuntimeProfile)
     request = ExecutionRequest(command=("/bin/true",))
-    assert_type(await client.execute(request), ExecutionResult)
+    result = await client.execute(request)
+    assert_type(result, ExecutionResult)
+    assert_type(result.success, bool)
+    assert_type(result.status, ExecutionStatus)
+    assert_type(client.effective_limits(request), ResolvedLimits)
     async with client.stream(request) as execution:
         assert_type(execution, Execution)
         assert_type(execution.request_id, str)

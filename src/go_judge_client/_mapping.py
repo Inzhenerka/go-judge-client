@@ -4,7 +4,7 @@ from ._grpc.request_pb2 import Request
 from ._grpc.response_pb2 import Response
 from ._grpc.stream_request_pb2 import StreamRequest
 from .errors import ClientLimitExceededError, ProtocolError, RemoteServiceError
-from .models import ArtifactFile, ArtifactProblem, ClientBudgets, ExecutionResult
+from .models import ArtifactFile, ArtifactProblem, ClientBudgets, ExecutionResult, ExecutionStatus
 from .profiles import ResolvedRequest
 
 
@@ -82,7 +82,7 @@ def final_result(
     return ExecutionResult(
         request_id=resolved.request_id,
         runtime=resolved.request.runtime,
-        status=status,
+        status=ExecutionStatus(status),
         upstream_status=result.status,
         upstream_status_name=upstream_name,
         exit_status=result.exitStatus,

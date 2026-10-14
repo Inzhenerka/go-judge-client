@@ -157,3 +157,37 @@ def test_decoder_split_streams() -> None:
     assert decoder.decode(Output("stdout", b"\x82\xac")) == "€"
     assert decoder.decode(Output("stderr", b"\xff")) == "�"
     assert decoder.finish("stdout") == ""
+
+
+def test_limit_inheritance_survives_snapshots_and_serialization() -> None:
+    from go_judge_client import ResolvedLimits
+
+    profile = RuntimeProfile(command=("python",), limits=Limits(memory_bytes=1024**3, cpu_cores=2))
+    profile = RuntimeProfile.model_validate_json(profile.model_dump_json())
+    client = AsyncGoJudgeClient("localhost:1", default_limits=Limits(wall_seconds=60), runtimes={"python": profile})
+    request = ExecutionRequest(runtime="python", limits=Limits(cpu_seconds=2, cpu_cores=None))
+    request = ExecutionRequest.model_validate_json(request.model_copy(deep=True).model_dump_json())
+    effective = client.effective_limits(request)
+    assert isinstance(effective, ResolvedLimits)
+    assert effective.cpu_seconds == 2
+    assert effective.memory_bytes == 1024**3
+    assert effective.wall_seconds == 60
+    assert effective.cpu_cores is None
+    resolved = resolve(request, client._runtimes, client.default_limits, client.budgets)
+    assert resolved.limits == effective
+    assert wire_request(resolved, client.budgets).execRequest.cmd[0].cpuRateLimit == 0
+    inherited = client.effective_limits(ExecutionRequest(runtime="python", limits=Limits()))
+    assert inherited.cpu_cores == 2 and inherited.memory_bytes == 1024**3
+    assert Limits().model_dump() == {}
+    assert Limits(cpu_cores=None).model_dump() == {"cpu_cores": None}
+    # Even an explicit value equal to the built-in default overrides its parent.
+    assert (
+        client.effective_limits(ExecutionRequest(runtime="python", limits=Limits(wall_seconds=30))).wall_seconds == 30
+    )
+    assert client.effective_limits(ExecutionRequest(command=("true",))).memory_bytes == 256 * 1024**2
+
+
+@pytest.mark.parametrize("field", ["cpu_seconds", "wall_seconds", "memory_bytes", "stack_bytes", "processes"])
+def test_mandatory_limits_reject_none(field: str) -> None:
+    with pytest.raises(ValidationError):
+        Limits.model_validate({field: None})

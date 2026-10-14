@@ -19,6 +19,7 @@ from .. import (
     ExpectedFile,
     Finished,
     GoJudgeClientError,
+    Limits,
     Output,
     RuntimeProfile,
     TextDecoder,
@@ -52,14 +53,31 @@ def token_from_env(name: str | None) -> SecretStr | None:
 def error_message(error: Exception) -> str:
     """Expose local error categories without remote details, values or dynamic map keys."""
     if isinstance(error, ValidationError):
-        fields = ExecutionRequest.model_fields.keys() | RuntimeProfile.model_fields.keys() | {"runtimes"}
+        fields = (
+            ExecutionRequest.model_fields.keys()
+            | RuntimeProfile.model_fields.keys()
+            | Limits.model_fields.keys()
+            | {"runtimes"}
+        )
         issues = []
         for item in error.errors(include_input=False, include_context=False, include_url=False):
             location = item["loc"]
-            field = str(location[0]) if location and location[0] in fields else "configuration"
-            reason = {"missing": "required field", "extra_forbidden": "unexpected field"}.get(
-                item["type"], "invalid value"
-            )
+            # Runtime names and environment/file keys are user data: never print them.
+            safe_location = []
+            for index, part in enumerate(location):
+                if index and location[index - 1] in {"runtimes", "env", "files"}:
+                    continue
+                if part in fields:
+                    safe_location.append(str(part))
+            field = ".".join(safe_location) or "configuration"
+            reason = {
+                "missing": "required field",
+                "extra_forbidden": "unexpected field",
+                "greater_than": "must be greater than zero",
+                "int_type": "expected an integer",
+                "finite_number": "expected a finite number",
+                "tuple_type": "expected an argument list",
+            }.get(item["type"], "invalid value")
             issues.append(f"{field}: {reason}")
         return "Invalid configuration: " + "; ".join(dict.fromkeys(issues)) + "."
     if isinstance(error, GoJudgeClientError):
@@ -78,7 +96,7 @@ def error_message(error: Exception) -> str:
 
 
 @app.command()
-def profiles(profiles: Annotated[Path, typer.Option(help="Runtime profile TOML file")]) -> None:
+def profiles(profiles: Annotated[Path, typer.Option(help="Runtime profile TOML file", envvar="GJ_PROFILES")]) -> None:
     """List configured names locally; this does not discover installed runtimes."""
     try:
         client = AsyncGoJudgeClient("localhost:5051", runtimes=load_profiles(profiles))
@@ -91,7 +109,10 @@ def profiles(profiles: Annotated[Path, typer.Option(help="Runtime profile TOML f
 
 @app.command()
 def check(
-    target: str = "localhost:5051", insecure: bool = False, token_env: str | None = None, timeout: float = 5
+    target: Annotated[str, typer.Option(envvar="GJ_TARGET")] = "localhost:5051",
+    insecure: Annotated[bool, typer.Option(envvar="GJ_INSECURE")] = False,
+    token_env: Annotated[str | None, typer.Option(envvar="GJ_TOKEN_ENV")] = None,
+    timeout: float = 5,
 ) -> None:
     """Check gRPC connectivity only; does not authenticate or run a program."""
 
@@ -109,27 +130,36 @@ def check(
 
 @app.command()
 def run(
+    ctx: typer.Context,
     project: Annotated[Path, typer.Argument(help="Local project directory or single file")],
-    profiles: Path | None = None,
-    runtime: str | None = None,
+    profiles: Annotated[Path | None, typer.Option(envvar="GJ_PROFILES")] = None,
+    runtime: Annotated[str | None, typer.Option(envvar="GJ_RUNTIME")] = None,
     entrypoint: str | None = None,
     command: Annotated[list[str] | None, typer.Option(help="Repeat for each direct argv element")] = None,
     arg: Annotated[list[str] | None, typer.Option(help="Additional profile argument")] = None,
     expect: Annotated[list[str] | None, typer.Option()] = None,
     optional_expect: Annotated[list[str] | None, typer.Option()] = None,
-    target: str = "localhost:5051",
-    insecure: bool = False,
-    token_env: str | None = None,
+    target: Annotated[str, typer.Option(envvar="GJ_TARGET")] = "localhost:5051",
+    insecure: Annotated[bool, typer.Option(envvar="GJ_INSECURE")] = False,
+    token_env: Annotated[str | None, typer.Option(envvar="GJ_TOKEN_ENV")] = None,
     output_dir: Path = Path("gj-output"),
     include_excluded: bool = False,
     stdin_file: Path | None = None,
     timeout: float = 150,
+    argv: Annotated[list[str] | None, typer.Argument(help="Direct command after -- (literal argv)")] = None,
 ) -> None:
     """Run once, forward live output, and save explicitly requested artifacts."""
 
     async def perform() -> int:
         budgets = ClientBudgets()
-        if (runtime is None) == (command is None):
+        if command is not None and argv:
+            raise ConfigurationError("Use either --command or a command after --, not both")
+        direct_command = argv or command
+        runtime_source = ctx.get_parameter_source("runtime")
+        if direct_command is not None and runtime_source is not None and runtime_source.name == "COMMANDLINE":
+            raise ConfigurationError("Provide exactly one of --runtime and --command (or command after --)")
+        selected_runtime = runtime if direct_command is None else None
+        if (selected_runtime is None) == (direct_command is None):
             raise ConfigurationError("Provide exactly one of --runtime and --command")
         files = load_project(project, budgets, include_excluded=include_excluded, output_dir=output_dir)
         stdin = b""
@@ -137,9 +167,9 @@ def run(
             with stdin_file.open("rb") as stream:
                 stdin = stream.read(budgets.stdin_bytes + 1)
         request = ExecutionRequest(
-            runtime=runtime,
-            command=tuple(command) if command else None,
-            entrypoint=entrypoint or (project.name if runtime and project.is_file() else None),
+            runtime=selected_runtime,
+            command=tuple(direct_command) if direct_command else None,
+            entrypoint=entrypoint or (project.name if selected_runtime and project.is_file() else None),
             args=tuple(arg or ()),
             files=files,
             stdin=stdin,
@@ -176,7 +206,7 @@ def run(
                         )
                         if result.not_received:
                             typer.echo("Not received: " + ", ".join(result.not_received), err=True)
-                        return 0 if result.status == "accepted" and result.required_artifacts_satisfied else 1
+                        return 0 if result.success else 1
         return 2
 
     try:

@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from uuid import uuid4
 
 from .errors import ClientLimitExceededError, ConfigurationError, UnknownRuntimeError
-from .models import ClientBudgets, ExecutionRequest, Limits, RuntimeProfile, encode
+from .models import ClientBudgets, ExecutionRequest, Limits, ResolvedLimits, RuntimeProfile, encode, resolve_limits
 
 
 @dataclass(frozen=True, slots=True)
@@ -14,7 +14,7 @@ class ResolvedRequest:
     request_id: str
     command: tuple[str, ...]
     environment: tuple[str, ...]
-    limits: Limits
+    limits: ResolvedLimits
     files: tuple[tuple[str, bytes], ...]
     stdin: bytes
 
@@ -38,7 +38,7 @@ def resolve(
         assert request.command is not None
         command = request.command
     env = (profile.env if profile else {}) | request.env
-    limits = request.limits or (profile.limits if profile else None) or defaults
+    limits = resolve_limits(defaults, profile.limits if profile else None, request.limits)
     files = tuple((path, encode(content)) for path, content in request.files.items())
     stdin = encode(request.stdin)
     environment = tuple(f"{key}={value}" for key, value in sorted(env.items()))

@@ -15,6 +15,29 @@ uv run poe check
 For another uv project, use `uv add /path/to/go-judge-client`. The CLI is optional:
 `uv add '/path/to/go-judge-client[cli]'`. The core dependencies do not include Typer.
 
+## Run a command
+
+The server must already be running and contain the requested executable:
+
+```python
+import asyncio
+from go_judge_client import AsyncGoJudgeClient, ExecutionRequest
+
+
+async def main() -> None:
+    async with AsyncGoJudgeClient("localhost:15051", insecure=True) as client:
+        result = await client.execute(ExecutionRequest(command=("/bin/echo", "Hello")))
+        print((result.stdout or b"").decode())
+        print(result.success, result.status)
+
+
+asyncio.run(main())
+```
+
+`result.success` means the program was accepted and all required artifacts were received without
+file errors. Program failures are results; transport failures raise exceptions. `ExecutionStatus`
+is a string enum, so existing comparisons such as `result.status == "accepted"` also work.
+
 ## Streaming Python API
 
 The endpoint must already have the selected runtime installed. This example matches the
@@ -41,7 +64,7 @@ async def main() -> None:
         ),
     }
     async with AsyncGoJudgeClient(
-        "localhost:5051",
+        "localhost:15051",
         insecure=True,
         runtimes=profiles,
         max_concurrency=4,

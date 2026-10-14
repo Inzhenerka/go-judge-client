@@ -35,3 +35,38 @@ def test_serialized_request_size_cap() -> None:
     resolved = resolve(ExecutionRequest(command=("run",), files={"x": b"x" * 2000}), {}, Limits(), budgets)
     with pytest.raises(ClientLimitExceededError):
         wire_request(resolved, budgets)
+
+
+@pytest.mark.parametrize(
+    ("status", "received", "required", "expected_success"),
+    [
+        (1, True, True, True),
+        (1, False, True, False),
+        (1, False, False, True),
+        (8, True, True, False),
+        (100, True, True, False),
+    ],
+)
+def test_success_and_typed_status(status: int, received: bool, required: bool, expected_success: bool) -> None:
+    from go_judge_client import ExecutionStatus
+
+    resolved = resolve(
+        ExecutionRequest(command=("run",), expected_files=(ExpectedFile(path="x", required=required),)),
+        {},
+        Limits(),
+        ClientBudgets(),
+    )
+    response = Response(
+        results=[
+            Response.Result(
+                status=cast(Response.Result.StatusType, status),
+                files={"x": b""} if received else {},
+            )
+        ]
+    )
+    result = final_result(response, resolved, ClientBudgets(), b"", b"")
+    assert isinstance(result.status, ExecutionStatus)
+    assert result.success is expected_success
+    assert result.summary().model_dump(mode="json")["status"] == str(result.status)
+    if status == 100:
+        assert result.status is ExecutionStatus.UNKNOWN and result.upstream_status == 100
