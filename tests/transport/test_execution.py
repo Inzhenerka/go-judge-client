@@ -1,6 +1,6 @@
 import asyncio
 import sys
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator, AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import cast
@@ -324,7 +324,7 @@ async def test_state_and_unknown_runtime(server: tuple[FakeExecutor, str]) -> No
 
 
 @asynccontextmanager
-async def tls_peer(mutual: bool = False) -> AsyncIterator[tuple[str, bytes, bytes]]:
+async def tls_peer(mutual: bool = False) -> AsyncGenerator[tuple[str, bytes, bytes]]:
     fixtures = Path(__file__).parents[1] / "fixtures"
     cert = (fixtures / "localhost.crt").read_bytes()
     key = (fixtures / "localhost.key").read_bytes()

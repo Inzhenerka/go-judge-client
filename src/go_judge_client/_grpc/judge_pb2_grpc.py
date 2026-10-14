@@ -10,7 +10,7 @@ from . import response_pb2 as response__pb2
 from . import stream_request_pb2 as stream__request__pb2
 from . import stream_response_pb2 as stream__response__pb2
 
-GRPC_GENERATED_VERSION = '1.78.0'
+GRPC_GENERATED_VERSION = '1.84.0'
 GRPC_VERSION = grpc.__version__
 _version_not_supported = False
 
@@ -30,7 +30,7 @@ if _version_not_supported:
     )
 
 
-class ExecutorStub(object):
+class ExecutorStub:
     """Missing associated documentation comment in .proto file."""
 
     def __init__(self, channel):
@@ -81,7 +81,7 @@ class ExecutorStub(object):
                 _registered_method=True)
 
 
-class ExecutorServicer(object):
+class ExecutorServicer:
     """Missing associated documentation comment in .proto file."""
 
     def Exec(self, request, context):
@@ -197,7 +197,7 @@ def add_ExecutorServicer_to_server(servicer, server):
 
 
  # This class is part of an EXPERIMENTAL API.
-class Executor(object):
+class Executor:
     """Missing associated documentation comment in .proto file."""
 
     @staticmethod

@@ -106,13 +106,13 @@ Build the test image once, then start the local server in the foreground, withou
 (Docker with Linux containers is required):
 
 ```sh
-docker build -t go-judge-client-test:e9d70a0 -f examples/runtime-image/Dockerfile .
+docker build -t go-judge-client-test:1.13.3 -f examples/runtime-image/Dockerfile .
 uv run poe judge
 ```
 
-The pinned server currently fails functional acceptance on native ARM64 Docker Desktop; amd64
-emulation on that host also fails seccomp initialization. Use a native Linux amd64 server for release
-acceptance; see [current verification](docs/compatibility.md#current-checkout-verification-2026-10-14).
+The earlier pinned server failed functional acceptance on native ARM64 Docker Desktop; amd64
+emulation on that host also failed seccomp initialization. The refreshed image is not yet verified on ARM64. Use a native Linux amd64 server for release
+acceptance; see [current verification](docs/compatibility.md#dependency-refresh-2026-10-14).
 The Python SDK itself is tested on macOS ARM64 and Linux ARM64.
 
 Keep that terminal open. Press `Ctrl+C` to stop and remove the container. The server is exposed only on

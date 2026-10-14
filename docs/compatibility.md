@@ -7,7 +7,29 @@ They are historical evidence, not the results of the current checkout or a certi
 server images. Use the CI matrix and reproduction commands to validate a release. Local image IDs
 and benchmark results are specific to the original host.
 
-## Current checkout verification (2026-10-14)
+## Dependency refresh (2026-10-14)
+
+The current pins are in `uv.lock`, `pyproject.toml`, the CI workflow and the runtime Dockerfile.
+This refresh uses grpcio/grpcio-tools 1.84.0, protobuf 7.36.2, Pydantic 2.14.1, Typer 0.27.3,
+Ruff 0.17.0, ty 0.0.87, and uv/uv_build 0.13.1. Generated bindings require grpcio >=1.84
+and protobuf >=7.35.1; protobuf 6 is no longer supported by this generation of bindings.
+
+The test image builds go-judge v1.13.3 (`4ebd2ffe9474639c665fa21cfb438f68820fe77c`) with Go 1.27.2.
+Both base images are pinned by digest. Its six protocol schemas are byte-identical to the previous pin.
+Well-known compiler schemas and generated Python bindings were refreshed together.
+
+Local macOS ARM64 / Python 3.14.8 checks: 137 tests passed, eight Windows-only tests skipped;
+core coverage 96.50%; lint, type checking, schema reproduction, build and clean wheel installation passed.
+A separate installed-wheel environment with grpcio 1.84.0, protobuf 7.35.1, Pydantic 2.12.0 and
+Typer 0.25.0 also passed all 137 tests (two upstream Typer/Click deprecation warnings).
+Native Linux amd64 sandbox acceptance for this image is enforced by CI before release.
+
+The earlier release and CI-only changes passed native Linux amd64 integration, including SIGINT and
+remote cleanup, in [CI run 38538484805](https://github.com/Inzhenerka/go-judge-client/actions/runs/38538484805).
+The ARM64 sandbox failures below concern the earlier server/image; the refreshed image has not been
+validated for ARM64 sandbox execution.
+
+## Initial pre-release checkout verification (2026-10-14)
 
 - macOS ARM64, Python 3.14.8: 102 unit/transport/typing/CLI tests passed, eight Windows-only tests
   skipped; core line coverage 95.98%. Ruff formatting/lint and ty passed.
@@ -28,7 +50,7 @@ for this checkout. CI covers Linux on Python 3.12–3.14. Windows is outside the
 historical Windows observations and retained defensive checks do not imply ongoing support. Historical results below do not satisfy those gates, and no
 remote CI pass is claimed for these changes.
 
-## Pins
+## Historical pins (before the dependency refresh)
 
 | Component | Verified value |
 |---|---|
@@ -122,5 +144,5 @@ or overhead claim follows. The execution path contains no JSON/Base64/archive co
 `uv run python scripts/check_cli_signal.py` (Linux), `uv run python scripts/check_remote_cleanup.py`
 (labeled disposable Docker server), and `uv run python scripts/benchmark.py`.
 
-The local implementation includes CI workflows but no remote CI run is claimed. See `development.md`
+For current remote verification use the CI run associated with the release commit. See `development.md`
 for prerequisites and cleanup commands.

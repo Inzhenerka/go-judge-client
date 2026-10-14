@@ -1,11 +1,11 @@
-FROM golang:1.26.1-bookworm@sha256:ab3d6955bbc813a0f3fdf220c1d817dd89c0b3f283777db8ece4a32fe7858edd AS build
-ARG GO_JUDGE_REV=e9d70a0d9a3df0c62182a6e7090d7af650a1d5f8
+FROM golang:1.27.2-bookworm@sha256:5cf287a799e6b94384bad13d16b14904c531f51ba65792237e122ce42b392f61 AS build
+ARG GO_JUDGE_REV=4ebd2ffe9474639c665fa21cfb438f68820fe77c
 ADD https://github.com/criyle/go-judge/archive/${GO_JUDGE_REV}.tar.gz /tmp/source.tar.gz
 RUN mkdir /src && tar xzf /tmp/source.tar.gz --strip-components=1 -C /src
 WORKDIR /src
 RUN CGO_ENABLED=0 go build -trimpath -o /go-judge ./cmd/go-judge
 
-FROM python:3.13-slim-trixie@sha256:7c61056e61ac89e852de05f3dc6fa51a6dd2181797bceed46aa725dd7cb2cd3b
+FROM python:3.13-slim-trixie@sha256:70729b46c69b4f1e97c4822c1af3df53a1476cf5ddc6c087c0c10bc3a5678c2f
 RUN python -m venv /usr/local/runtimes/python-data
 COPY --from=build /go-judge /usr/local/bin/go-judge
 ENTRYPOINT ["/usr/local/bin/go-judge"]

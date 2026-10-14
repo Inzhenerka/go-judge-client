@@ -33,7 +33,7 @@ class Request(_message.Message):
         name: str
         max: int
         pipe: bool
-        def __init__(self, name: _Optional[str] = ..., max: _Optional[int] = ..., pipe: bool = ...) -> None: ...
+        def __init__(self, name: _Optional[str] = ..., max: _Optional[int] = ..., pipe: _Optional[bool] = ...) -> None: ...
     class File(_message.Message):
         __slots__ = ("local", "memory", "cached", "pipe", "streamIn", "streamOut")
         LOCAL_FIELD_NUMBER: _ClassVar[int]
@@ -105,14 +105,14 @@ class Request(_message.Message):
         copyOutDir: str
         copyOutMax: int
         copyOutTruncate: bool
-        def __init__(self, args: _Optional[_Iterable[str]] = ..., env: _Optional[_Iterable[str]] = ..., files: _Optional[_Iterable[_Union[Request.File, _Mapping]]] = ..., tty: bool = ..., cpuTimeLimit: _Optional[int] = ..., clockTimeLimit: _Optional[int] = ..., memoryLimit: _Optional[int] = ..., stackLimit: _Optional[int] = ..., procLimit: _Optional[int] = ..., cpuRateLimit: _Optional[int] = ..., cpuSetLimit: _Optional[str] = ..., dataSegmentLimit: bool = ..., addressSpaceLimit: bool = ..., copyIn: _Optional[_Mapping[str, Request.File]] = ..., symlinks: _Optional[_Mapping[str, str]] = ..., copyOut: _Optional[_Iterable[_Union[Request.CmdCopyOutFile, _Mapping]]] = ..., copyOutCached: _Optional[_Iterable[_Union[Request.CmdCopyOutFile, _Mapping]]] = ..., copyOutDir: _Optional[str] = ..., copyOutMax: _Optional[int] = ..., copyOutTruncate: bool = ...) -> None: ...
+        def __init__(self, args: _Optional[_Iterable[str]] = ..., env: _Optional[_Iterable[str]] = ..., files: _Optional[_Iterable[_Union[Request.File, _Mapping]]] = ..., tty: _Optional[bool] = ..., cpuTimeLimit: _Optional[int] = ..., clockTimeLimit: _Optional[int] = ..., memoryLimit: _Optional[int] = ..., stackLimit: _Optional[int] = ..., procLimit: _Optional[int] = ..., cpuRateLimit: _Optional[int] = ..., cpuSetLimit: _Optional[str] = ..., dataSegmentLimit: _Optional[bool] = ..., addressSpaceLimit: _Optional[bool] = ..., copyIn: _Optional[_Mapping[str, Request.File]] = ..., symlinks: _Optional[_Mapping[str, str]] = ..., copyOut: _Optional[_Iterable[_Union[Request.CmdCopyOutFile, _Mapping]]] = ..., copyOutCached: _Optional[_Iterable[_Union[Request.CmdCopyOutFile, _Mapping]]] = ..., copyOutDir: _Optional[str] = ..., copyOutMax: _Optional[int] = ..., copyOutTruncate: _Optional[bool] = ...) -> None: ...
     class CmdCopyOutFile(_message.Message):
         __slots__ = ("name", "optional")
         NAME_FIELD_NUMBER: _ClassVar[int]
         OPTIONAL_FIELD_NUMBER: _ClassVar[int]
         name: str
         optional: bool
-        def __init__(self, name: _Optional[str] = ..., optional: bool = ...) -> None: ...
+        def __init__(self, name: _Optional[str] = ..., optional: _Optional[bool] = ...) -> None: ...
     class PipeMap(_message.Message):
         __slots__ = ("out", "proxy", "name", "max", "disableZeroCopy")
         class PipeIndex(_message.Message):
@@ -133,7 +133,7 @@ class Request(_message.Message):
         name: str
         max: int
         disableZeroCopy: bool
-        def __init__(self, out: _Optional[_Union[Request.PipeMap.PipeIndex, _Mapping]] = ..., proxy: bool = ..., name: _Optional[str] = ..., max: _Optional[int] = ..., disableZeroCopy: bool = ..., **kwargs) -> None: ...
+        def __init__(self, out: _Optional[_Union[Request.PipeMap.PipeIndex, _Mapping]] = ..., proxy: _Optional[bool] = ..., name: _Optional[str] = ..., max: _Optional[int] = ..., disableZeroCopy: _Optional[bool] = ..., **kwargs) -> None: ...
     REQUESTID_FIELD_NUMBER: _ClassVar[int]
     CMD_FIELD_NUMBER: _ClassVar[int]
     PIPEMAPPING_FIELD_NUMBER: _ClassVar[int]

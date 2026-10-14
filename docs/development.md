@@ -3,7 +3,7 @@
 For a local server, first build the runtime image, then run the foreground task:
 
 ```sh
-docker build -t go-judge-client-test:e9d70a0 -f examples/runtime-image/Dockerfile .
+docker build -t go-judge-client-test:1.13.3 -f examples/runtime-image/Dockerfile .
 ```
 
 Release integration requires native Linux amd64. The current pinned server fails functional acceptance
@@ -17,7 +17,7 @@ Start the server:
 uv run poe judge
 ```
 
-This foreground task uses the locally built `go-judge-client-test:e9d70a0` image, binds gRPC only to
+This foreground task uses the locally built `go-judge-client-test:1.13.3` image, binds gRPC only to
 `127.0.0.1:15051`, and enables no authentication token. Stop it with `Ctrl+C`; Docker then removes the
 container because the command uses `--rm`.
 
@@ -34,7 +34,7 @@ Dependency upgrades are explicit (`poe outdated`, `poe upgrade`). CI covers Linu
 Windows is not a supported target or a release gate. See the
 compatibility report for observed versions. Comments, docs, examples and error messages are English.
 
-Protobuf is generated with `grpcio-tools==1.78.0`, using Edition 2023 sources and the vendored Go feature
+Protobuf is generated with `grpcio-tools==1.84.0`, using Edition 2023 sources and the vendored Go feature
 descriptor. Run `poe generate-proto` to regenerate. Only generated Python import/module paths are
 adapted; protobuf package names, descriptors, service paths and wire fields remain unchanged. `.pyi`
 and runtime modules are committed. Neither protoc nor Go is needed by package consumers. `check-proto`
@@ -52,9 +52,9 @@ Use a disposable Linux Docker environment. The example builds one Python runtime
 dependencies at execution time. Pin and review all images before production use.
 
 ```sh
-docker build -t go-judge-client-test:e9d70a0 -f examples/runtime-image/Dockerfile .
+docker build -t go-judge-client-test:1.13.3 -f examples/runtime-image/Dockerfile .
 docker run -d --name gj-client-acceptance --label go-judge-client.test=true --privileged --cgroupns=host \
-  --memory 512m --cpus 1 -p 127.0.0.1:15051:5051 go-judge-client-test:e9d70a0 \
+  --memory 512m --cpus 1 -p 127.0.0.1:15051:5051 go-judge-client-test:1.13.3 \
   -enable-grpc -grpc-addr :5051 -http-addr 127.0.0.1:5050 \
   -auth-token gj-local-test-only -no-fallback -parallelism 1 -pre-fork 1
 GO_JUDGE_TEST_TARGET=127.0.0.1:15051 uv run poe test-integration
