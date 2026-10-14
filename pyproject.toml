@@ -69,3 +69,33 @@ omit = ["*/_grpc/*", "*/cli/*"]
 [tool.coverage.report]
 fail_under = 90
 show_missing = true
+
+[tool.semantic_release]
+version_toml = ["pyproject.toml:project.version"]
+commit_parser = "conventional"
+tag_format = "v{version}"
+allow_zero_version = true
+major_on_zero = true
+commit_message = "chore(release): {version} [skip ci]"
+assets = ["uv.lock"]
+build_command_env = ["UV_CACHE_DIR"]
+build_command = """
+set -eu
+uv lock --upgrade-package "$PACKAGE_NAME"
+uv build
+uv run --locked python scripts/check_wheel.py
+"""
+
+[tool.semantic_release.branches.main]
+match = "^main$"
+prerelease = false
+
+[tool.semantic_release.changelog]
+mode = "init"
+
+[tool.semantic_release.changelog.default_templates]
+changelog_file = "CHANGELOG.md"
+mask_initial_release = false
+
+[tool.semantic_release.publish]
+dist_glob_patterns = ["dist/*.whl", "dist/*.tar.gz"]

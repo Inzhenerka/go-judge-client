@@ -76,3 +76,8 @@ targets visible in reviewed directories; do not expose all of `/etc`, `/run` or 
 fix imports. Adding dependencies needs its own vulnerability review. Profiles are not a security audit,
 and the normal privileged deployment requirements remain. Different tool/egress inventories may require
 separate deployments; the SDK cannot dynamically switch images.
+
+## Release automation
+
+Use Conventional Commits; versioning, changelog, GitHub Releases and optional PyPI publication are
+managed by CI. See [releases](releases.md) for the one-time publisher setup and retry procedure.

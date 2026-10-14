@@ -5,7 +5,7 @@ Live stdout/stderr, named runtime profiles, binary project files, expected artif
 Python 3.12+, Pydantic v2, `grpc.aio`. No web service or sandbox installer is included.
 Linux is the supported deployment platform; CI tests Python 3.12–3.14. Windows is outside the support scope.
 
-Version 0.1.0 is not published yet. Install and check a local checkout:
+Install and check a local checkout (PyPI publication is enabled separately; see [releases](docs/releases.md)):
 
 ```sh
 uv sync

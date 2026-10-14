@@ -1,5 +1,13 @@
 name: CI
-on: [push, pull_request, workflow_dispatch]
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      publish_tag:
+        description: 'Existing GitHub Release tag to publish to PyPI (e.g. v0.1.0); blank runs CI only'
+        required: false
+        type: string
 permissions:
   contents: read
 jobs:
@@ -54,3 +62,105 @@ jobs:
       - name: Clean up
         if: always()
         run: docker rm -f gj-client-acceptance
+  release:
+    needs: [package, integration]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.repository == 'Inzhenerka/go-judge-client'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    concurrency:
+      group: semantic-release-main
+      cancel-in-progress: false
+    permissions:
+      contents: write
+    outputs:
+      released: ${{ steps.version.outputs.released }}
+      tag: ${{ steps.version.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+      - name: Release only the tested main revision
+        id: revision
+        env:
+          TESTED_SHA: ${{ github.sha }}
+        run: |
+          current=$(git ls-remote origin refs/heads/main | cut -f1)
+          if [ "$current" = "$TESTED_SHA" ]; then
+            git checkout -B main "$TESTED_SHA"
+            echo "current=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "A newer main revision exists; its CI run owns the next release."
+          fi
+      - uses: astral-sh/setup-uv@v6
+        if: steps.revision.outputs.current == 'true'
+        with:
+          version: '0.12.19'
+          python-version: '3.13'
+      - if: steps.revision.outputs.current == 'true'
+        run: uv sync --locked
+      - name: Version, build, validate and create GitHub Release
+        if: steps.revision.outputs.current == 'true'
+        id: version
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: uvx --from python-semantic-release==10.7.0 semantic-release version
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: steps.version.outputs.released == 'true'
+        with:
+          name: release-dist
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 30
+  release-assets:
+    needs: release
+    if: needs.release.outputs.released == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: release-dist
+          path: dist
+      - name: Attach the verified distributions to GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ needs.release.outputs.tag }}
+        run: gh release upload "$RELEASE_TAG" dist/* --clobber
+  publish-pypi:
+    needs: [package, integration, release, release-assets]
+    if: >-
+      always() && !cancelled() &&
+      github.repository == 'Inzhenerka/go-judge-client' &&
+      github.ref == 'refs/heads/main' &&
+      vars.PYPI_PUBLISH_ENABLED == 'true' &&
+      needs.package.result == 'success' && needs.integration.result == 'success' &&
+      ((needs.release-assets.result == 'success' && needs.release.outputs.released == 'true') ||
+       (github.event_name == 'workflow_dispatch' && inputs.publish_tag != ''))
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    concurrency:
+      group: publish-pypi
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Download existing release distributions
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ needs.release.outputs.tag || inputs.publish_tag }}
+        run: |
+          if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Expected a stable release tag such as v0.1.0" >&2
+            exit 1
+          fi
+          gh release download "$RELEASE_TAG" --dir dist --pattern '*.whl' --pattern '*.tar.gz'
+      - name: Publish to PyPI using Trusted Publishing
+        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # release/v1
+        with:
+          skip-existing: true
