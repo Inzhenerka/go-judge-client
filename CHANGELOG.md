@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v0.2.0 (2026-10-14)
+
+### Features
+
+- Separate queued execution from streaming and add health checks
+  ([`764256f`](https://github.com/Inzhenerka/go-judge-client/commit/764256fbb4f662087702cfe67f5b68a9cce8f2e9))
+
+
 ## v0.1.1 (2026-10-14)
 
 ### Bug Fixes
