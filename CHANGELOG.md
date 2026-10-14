@@ -1,6 +1,22 @@
 # CHANGELOG
 
 
+## v0.1.1 (2026-10-14)
+
+### Bug Fixes
+
+- **deps**: Refresh Python dependencies and sandbox runtime
+  ([`017f0bf`](https://github.com/Inzhenerka/go-judge-client/commit/017f0bff5af1335375de1d466b5cfd3c2d461708))
+
+### Continuous Integration
+
+- Separate uv cache keys for concurrent jobs
+  ([`92d8004`](https://github.com/Inzhenerka/go-judge-client/commit/92d8004f0f88d1e06b61f1f4ec48f0b246922c0e))
+
+- Update actions to Node 24 and pin Ubuntu 24.04
+  ([`a086460`](https://github.com/Inzhenerka/go-judge-client/commit/a086460882067e8d91362e9ddaee8a7310898e58))
+
+
 ## v0.1.0 (2026-10-14)
 
 ### Bug Fixes
