@@ -51,9 +51,9 @@ class Model(BaseModel):
 class ResolvedLimits(Model):
     cpu_seconds: Seconds = 10
     wall_seconds: Seconds = 30
-    memory_bytes: PositiveInt = 256 * 1024**2
+    memory_bytes: PositiveInt = 1024**3
     stack_bytes: PositiveInt = 64 * 1024**2
-    processes: PositiveInt = 32
+    processes: PositiveInt = 128
     cpu_cores: Annotated[float, Field(gt=0, le=1_000_000, allow_inf_nan=False)] | None = None
 
     @field_validator("cpu_seconds", "wall_seconds", "cpu_cores", mode="before")
@@ -149,7 +149,8 @@ class ClientBudgets(Model):
     input_files: PositiveInt = 256
     input_bytes: PositiveInt = 8 * 1024**2
     stdin_bytes: PositiveInt = 1024**2
-    output_bytes: PositiveInt = 2 * 1024**2
+    # Client collector and upstream pipe buffering each add one byte.
+    output_bytes: Annotated[int, Field(strict=True, gt=0, le=2**63 - 3)] = 2 * 1024**2
     expected_files: PositiveInt = 32
     artifact_bytes: PositiveInt = 8 * 1024**2
     artifacts_bytes: PositiveInt = 16 * 1024**2
@@ -161,6 +162,19 @@ class ClientBudgets(Model):
     argument_bytes: PositiveInt = 16 * 1024
     environment_count: PositiveInt = 64
     environment_bytes: PositiveInt = 32 * 1024
+
+    def configuration_warnings(self) -> tuple[str, ...]:
+        """Report potentially conflicting caps; smaller transport caps remain valid."""
+        warnings = []
+        if self.artifact_bytes > self.artifacts_bytes:
+            warnings.append("artifact_bytes exceeds artifacts_bytes; the aggregate cap takes precedence")
+        if min(self.artifact_bytes, self.artifacts_bytes) + 1024 > self.receive_message_bytes:
+            warnings.append("An allowed artifact may exceed receive_message_bytes; increase the receive cap")
+        if self.artifacts_bytes + self.output_bytes + 1024 > self.receive_message_bytes:
+            warnings.append("Combined artifacts/output may exceed receive_message_bytes; allow protobuf headroom")
+        if self.input_bytes + self.stdin_bytes + 1024 > self.send_message_bytes:
+            warnings.append("Combined input/stdin may exceed send_message_bytes; allow protobuf headroom")
+        return tuple(warnings)
 
 
 class ConnectionConfig(Model):

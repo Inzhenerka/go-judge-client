@@ -5,6 +5,6 @@ default_entrypoint = "main.py"
 [runtimes.python-data.limits]
 cpu_seconds = 10
 wall_seconds = 30
-memory_bytes = 268435456
+memory_bytes = 1073741824
 stack_bytes = 67108864
-processes = 32
+processes = 128

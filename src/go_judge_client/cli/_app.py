@@ -2,6 +2,7 @@
 
 import asyncio
 import os
+import re
 import sys
 import tomllib
 from pathlib import Path
@@ -42,6 +43,20 @@ def load_profiles(path: Path | None) -> dict[str, RuntimeProfile]:
         return ProfileDocument.model_validate(tomllib.load(stream)).runtimes
 
 
+def parse_size(value: str) -> int:
+    """Parse integer bytes or explicit SI/IEC units without float rounding."""
+    match = re.fullmatch(r"([0-9]+)(B|KB|MB|GB|TB|KiB|MiB|GiB|TiB)?", value, re.IGNORECASE)
+    if match is None:
+        raise ConfigurationError("Size must be integer bytes or an integer with B, KB/MB/GB/TB or KiB/MiB/GiB/TiB")
+    unit = (match[2] or "B").lower()
+    powers = {
+        "b": 1,
+        **{prefix + "b": 1000**n for n, prefix in enumerate("kmgt", 1)},
+        **{prefix + "ib": 1024**n for n, prefix in enumerate("kmgt", 1)},
+    }
+    return int(match[1]) * powers[unit]
+
+
 def token_from_env(name: str | None) -> SecretStr | None:
     if name is None:
         return None
@@ -58,6 +73,7 @@ def error_message(error: Exception) -> str:
             ExecutionRequest.model_fields.keys()
             | RuntimeProfile.model_fields.keys()
             | Limits.model_fields.keys()
+            | ClientBudgets.model_fields.keys()
             | {"runtimes"}
         )
         issues = []
@@ -162,13 +178,55 @@ def run(
     overwrite: Annotated[bool, typer.Option(help="Atomically replace existing regular artifact files")] = False,
     include_excluded: bool = False,
     stdin_file: Path | None = None,
-    timeout: float = 150,
+    timeout: Annotated[
+        float, typer.Option(help="Whole operation deadline, including queues; not CPU/wall limits")
+    ] = 150,
+    cpu_seconds: Annotated[float | None, typer.Option(help="CPU time limit in seconds")] = None,
+    wall_seconds: Annotated[float | None, typer.Option(help="Execution wall time limit in seconds")] = None,
+    memory_bytes: Annotated[str | None, typer.Option(help="Task memory: bytes or size such as 1GiB")] = None,
+    stack_bytes: Annotated[str | None, typer.Option(help="Stack: bytes or size such as 64MiB")] = None,
+    processes: Annotated[int | None, typer.Option(help="Process/thread limit")] = None,
+    cpu_cores: Annotated[float | None, typer.Option(help="CPU rate limit in cores")] = None,
+    no_cpu_limit: Annotated[
+        bool, typer.Option(help="Clear an inherited CPU rate limit; CPU time still applies")
+    ] = False,
+    budget: Annotated[
+        list[str] | None,
+        typer.Option(help="Client budget NAME=VALUE; byte fields accept sizes such as 16MiB; repeatable"),
+    ] = None,
     argv: Annotated[list[str] | None, typer.Argument(help="Direct command after -- (literal argv)")] = None,
 ) -> None:
     """Run once, forward live output, and save explicitly requested artifacts."""
 
     async def perform() -> int:
-        budgets = ClientBudgets()
+        budget_values: dict[str, int] = {}
+        for item in budget or ():
+            name, separator, value = item.partition("=")
+            if not separator or name not in ClientBudgets.model_fields:
+                raise ConfigurationError("Budget must be a known ClientBudgets field followed by =INTEGER")
+            try:
+                budget_values[name] = parse_size(value) if name.endswith("_bytes") else int(value)
+            except ValueError:
+                raise ConfigurationError("Budget value must be an integer") from None
+        budgets = ClientBudgets.model_validate(budget_values)
+        if no_cpu_limit and cpu_cores is not None:
+            raise ConfigurationError("Use either --cpu-cores or --no-cpu-limit")
+        for warning in budgets.configuration_warnings():
+            typer.echo("Warning: " + warning, err=True)
+        limits = Limits.model_validate(
+            {
+                name: value
+                for name, value in {
+                    "cpu_seconds": cpu_seconds,
+                    "wall_seconds": wall_seconds,
+                    "memory_bytes": parse_size(memory_bytes) if memory_bytes is not None else None,
+                    "stack_bytes": parse_size(stack_bytes) if stack_bytes is not None else None,
+                    "processes": processes,
+                    "cpu_cores": cpu_cores,
+                }.items()
+                if value is not None or (name == "cpu_cores" and no_cpu_limit)
+            }
+        )
         if command is not None and argv:
             raise ConfigurationError("Use either --command or a command after --, not both")
         direct_command = argv or command
@@ -190,6 +248,7 @@ def run(
             args=tuple(arg or ()),
             files=files,
             stdin=stdin,
+            limits=limits,
             expected_files=tuple(
                 [ExpectedFile(path=p) for p in expect or ()]
                 + [ExpectedFile(path=p, required=False) for p in optional_expect or ()]

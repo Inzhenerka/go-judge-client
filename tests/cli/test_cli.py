@@ -332,3 +332,135 @@ def test_direct_validation_code_is_readable() -> None:
     from go_judge_client.cli._app import error_message
 
     assert "Timeout must be finite and positive" in error_message(validation_error("timeout"))
+
+
+@pytest.mark.parametrize("profiled", [False, True])
+def test_cli_limits_and_budgets(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, profiled: bool) -> None:
+    from go_judge_client import AsyncGoJudgeClient, Execution, ExecutionRequest
+    from go_judge_client.cli import _app
+
+    observed = []
+
+    class RecordingClient(AsyncGoJudgeClient):
+        async def start(self) -> None:
+            pass
+
+        def stream(
+            self, request: ExecutionRequest, *, timeout_seconds: float | None = None, capture_output: bool = True
+        ) -> Execution:
+            observed.append((self.effective_limits(request), self.budgets, timeout_seconds))
+            raise ConfigurationError("Recorded without executing")
+
+    monkeypatch.setattr(_app, "AsyncGoJudgeClient", RecordingClient)
+    source = tmp_path / "main.py"
+    source.write_text("print('hello')")
+    profiles = tmp_path / "runtimes.toml"
+    profiles.write_text(
+        '[runtimes.python]\ncommand=["python"]\n[runtimes.python.limits]\ncpu_seconds=1\nstack_bytes=123456'
+    )
+    mode = ["--profiles", str(profiles), "--runtime", "python"] if profiled else ["--command", "python"]
+    result = runner.invoke(
+        app,
+        [
+            "run",
+            str(source),
+            *mode,
+            "--cpu-seconds",
+            "60",
+            "--wall-seconds",
+            "120",
+            "--memory-bytes",
+            "2147483648",
+            "--processes",
+            "256",
+            "--cpu-cores",
+            "2",
+            "--budget",
+            "output_bytes=8388608",
+            "--budget",
+            "input_bytes=100",
+            "--timeout",
+            "180",
+        ],
+    )
+    assert "Recorded" in result.output
+    limits, budgets, timeout = observed[0]
+    assert (limits.cpu_seconds, limits.wall_seconds, limits.memory_bytes) == (60, 120, 2147483648)
+    assert (limits.processes, limits.cpu_cores, timeout) == (256, 2, 180)
+    assert limits.stack_bytes == (123456 if profiled else 64 * 1024**2)
+    assert (budgets.output_bytes, budgets.input_bytes) == (8388608, 100)
+    observed.clear()
+    result = runner.invoke(app, ["run", str(source), *mode, "--budget", "input_bytes=1"])
+    assert result.exit_code == 2 and not observed
+
+
+@pytest.mark.parametrize("value", ["unknown=1", "output_bytes=oops", "output_bytes=0", "output_bytes"])
+def test_cli_invalid_budget(value: str, tmp_path: Path) -> None:
+    result = runner.invoke(app, ["run", str(tmp_path), "--command", "true", "--budget", value])
+    assert result.exit_code == 2
+    assert "Traceback" not in result.output
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"), [("1GiB", 1024**3), ("16MiB", 16 * 1024**2), ("1GB", 10**9), ("64", 64), ("2kib", 2048)]
+)
+def test_cli_size_units(value: str, expected: int) -> None:
+    from go_judge_client.cli._app import parse_size
+
+    assert parse_size(value) == expected
+
+
+@pytest.mark.parametrize("value", ["1.5GiB", "-1", "nan", "1G", "secret"])
+def test_cli_size_rejects_invalid(value: str) -> None:
+    from go_judge_client.cli._app import parse_size
+
+    with pytest.raises(ConfigurationError):
+        parse_size(value)
+
+
+def test_cli_clear_cpu_rate(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from go_judge_client import AsyncGoJudgeClient, Execution, ExecutionRequest
+    from go_judge_client.cli import _app
+
+    observed = []
+
+    class RecordingClient(AsyncGoJudgeClient):
+        async def start(self) -> None:
+            pass
+
+        def stream(
+            self, request: ExecutionRequest, *, timeout_seconds: float | None = None, capture_output: bool = True
+        ) -> Execution:
+            observed.append((self.effective_limits(request), self.budgets))
+            raise ConfigurationError("Recorded")
+
+    monkeypatch.setattr(_app, "AsyncGoJudgeClient", RecordingClient)
+    source = tmp_path / "main.py"
+    source.write_text("pass")
+    profiles = tmp_path / "runtimes.toml"
+    profiles.write_text('[runtimes.python]\ncommand=["python"]\n[runtimes.python.limits]\ncpu_cores=1')
+    args = [
+        "run",
+        str(source),
+        "--profiles",
+        str(profiles),
+        "--runtime",
+        "python",
+        "--memory-bytes",
+        "1GiB",
+        "--stack-bytes",
+        "32MiB",
+        "--budget",
+        "output_bytes=4MiB",
+    ]
+    assert "Recorded" in runner.invoke(app, args).output
+    assert observed[-1][0].cpu_cores == 1
+    assert "Recorded" in runner.invoke(app, [*args, "--no-cpu-limit"]).output
+    limits, budgets = observed[-1]
+    assert limits.cpu_cores is None
+    assert (limits.memory_bytes, limits.stack_bytes, budgets.output_bytes) == (1024**3, 32 * 1024**2, 4 * 1024**2)
+    before = len(observed)
+    assert runner.invoke(app, [*args, "--no-cpu-limit", "--cpu-cores", "2"]).exit_code == 2
+    assert len(observed) == before
+    result = runner.invoke(app, [*args, "--budget", "artifact_bytes=64MiB", "--budget", "artifacts_bytes=128MiB"])
+    assert "Warning:" in result.output and "receive_message_bytes" in result.output

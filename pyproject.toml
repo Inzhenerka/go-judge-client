@@ -54,7 +54,7 @@ test = "pytest tests/unit tests/transport tests/typing tests/cli"
 prep = ["format", "lint", "typecheck", "test"]
 check = [{cmd = "ruff format --check ."}, {cmd = "ruff check ."}, {cmd = "ty check"}, {cmd = "pytest tests/unit tests/transport tests/typing tests/cli"}]
 test-integration = "python scripts/integration_watchdog.py"
-judge = "docker run --rm --privileged --cgroupns=host --memory 512m --cpus 1 -p 127.0.0.1:15051:5051 go-judge-client-test:1.13.3 -enable-grpc -grpc-addr :5051 -http-addr 127.0.0.1:5050 -no-fallback -parallelism 1"
+judge = "docker run --rm --privileged --cgroupns=host --memory 2g --cpus 1 -p 127.0.0.1:15051:5051 go-judge-client-test:1.13.3 -enable-grpc -grpc-addr :5051 -http-addr 127.0.0.1:5050 -no-fallback -parallelism 1"
 generate-proto = "python scripts/generate_proto.py"
 check-proto = "python scripts/check_proto.py"
 build = "uv build --clear"

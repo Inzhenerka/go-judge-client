@@ -174,3 +174,14 @@ def test_buffered_preparation_failure_can_omit_output() -> None:
     assert not result.success
     assert result.diagnostic == "failed to get environment"
     assert result.stdout == result.stderr == b""
+
+
+def test_output_budget_wire_boundary() -> None:
+    from pydantic import ValidationError
+
+    for invalid in (2**63 - 2, 2**63 - 1):
+        with pytest.raises(ValidationError):
+            ClientBudgets(output_bytes=invalid)
+    budgets = ClientBudgets(output_bytes=2**63 - 3)
+    resolved = resolve(ExecutionRequest(command=("run",)), {}, Limits(), budgets)
+    assert unary_request(resolved, budgets).cmd[0].files[1].pipe.max == 2**63 - 2

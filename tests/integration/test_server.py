@@ -11,6 +11,7 @@ from pydantic import SecretStr
 from go_judge_client import (
     AsyncGoJudgeClient,
     AuthenticationError,
+    ClientBudgets,
     ExecutionCancelledError,
     ExecutionRequest,
     ExpectedFile,
@@ -358,3 +359,40 @@ async def test_independent_clients_server_parallelism(target: str, streaming: bo
         assert maximum > parallelism
     else:
         assert maximum <= parallelism
+
+
+async def test_default_memory_and_thread_limits(target: str) -> None:
+    # Run only against the disposable 2 GiB test container documented for this suite.
+    source = """import threading
+memory = bytearray(900 * 1024**2)
+ready = threading.Barrier(65)
+release = threading.Event()
+def worker():
+    ready.wait()
+    release.wait()
+threads = [threading.Thread(target=worker) for _ in range(64)]
+try:
+    for thread in threads:
+        thread.start()
+    ready.wait(timeout=10)
+    print(len(memory), len(threads), flush=True)
+finally:
+    release.set()
+    for thread in threads:
+        if thread.ident is not None:
+            thread.join(timeout=1)
+"""
+    async with client(target) as sdk:
+        result = await sdk.execute(ExecutionRequest(runtime="python", files={"main.py": source}))
+    assert result.success, result.summary()
+    assert result.stdout == b"943718400 64\n"
+
+
+async def test_maximum_output_budget_preserves_output(target: str) -> None:
+    async with AsyncGoJudgeClient(
+        target, insecure=True, token=token(), budgets=ClientBudgets(output_bytes=2**63 - 3)
+    ) as sdk:
+        result = await sdk.execute(ExecutionRequest(command=("/bin/echo", "hello")))
+    assert result.success, result.summary()
+    assert result.stdout == b"hello\n"
+    assert result.stderr == b""

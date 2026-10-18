@@ -71,7 +71,7 @@ dependencies at execution time. Pin and review all images before production use.
 ```sh
 docker build -t go-judge-client-test:1.13.3 -f examples/runtime-image/Dockerfile .
 docker run -d --name gj-client-acceptance --label go-judge-client.test=true --privileged --cgroupns=host \
-  --memory 512m --cpus 1 -p 127.0.0.1:15051:5051 go-judge-client-test:1.13.3 \
+  --memory 2g --cpus 1 -p 127.0.0.1:15051:5051 go-judge-client-test:1.13.3 \
   -enable-grpc -grpc-addr :5051 -http-addr 127.0.0.1:5050 \
   -auth-token gj-local-test-only -no-fallback -parallelism 1 -pre-fork 1
 GO_JUDGE_TEST_TARGET=127.0.0.1:15051 uv run poe test-integration
@@ -100,3 +100,14 @@ separate deployments; the SDK cannot dynamically switch images.
 
 Use Conventional Commits; versioning, changelog, GitHub Releases and optional PyPI publication are
 managed by CI. See [releases](releases.md) for the one-time publisher setup and retry procedure.
+
+The example container has 2 GiB total memory to leave headroom around one default 1 GiB task.
+Its memory is shared by the server and all concurrent tasks; raising task limits or running
+concurrent streaming requests requires sizing the container accordingly.
+
+On 2026-10-18, the updated defaults passed all 15 integration tests against the pinned
+v1.13.3 server built from the repository Dockerfile in Docker Desktop (2 GiB, one CPU,
+parallelism 1). This includes a task allocating 900 MiB and starting 64 Python threads
+without request-level limit overrides. The maximum accepted output budget also preserves
+stdout, with a regression test for upstream collector overflow. This is functional acceptance on Docker Desktop,
+not a substitute for the native Linux release gates in `compatibility.md`.

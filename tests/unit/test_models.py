@@ -184,7 +184,7 @@ def test_limit_inheritance_survives_snapshots_and_serialization() -> None:
     assert (
         client.effective_limits(ExecutionRequest(runtime="python", limits=Limits(wall_seconds=30))).wall_seconds == 30
     )
-    assert client.effective_limits(ExecutionRequest(command=("true",))).memory_bytes == 256 * 1024**2
+    assert client.effective_limits(ExecutionRequest(command=("true",))).memory_bytes == 1024**3
 
 
 @pytest.mark.parametrize("field", ["cpu_seconds", "wall_seconds", "memory_bytes", "stack_bytes", "processes"])
@@ -206,3 +206,13 @@ def test_overrides_do_not_present_defaults_as_explicit_values() -> None:
     assert restored.memory_bytes is None and restored.model_fields_set == {"cpu_seconds"}
     assert "cpu_cores" not in Limits().model_fields_set
     assert "cpu_cores" in Limits(cpu_cores=None).model_fields_set
+
+
+def test_budget_configuration_warnings() -> None:
+    assert ClientBudgets().configuration_warnings() == ()
+    assert any(
+        "receive_message_bytes" in w
+        for w in ClientBudgets(artifact_bytes=64 * 1024**2, artifacts_bytes=128 * 1024**2).configuration_warnings()
+    )
+    assert any("send_message_bytes" in w for w in ClientBudgets(input_bytes=32 * 1024**2).configuration_warnings())
+    assert any("aggregate" in w for w in ClientBudgets(artifacts_bytes=1).configuration_warnings())

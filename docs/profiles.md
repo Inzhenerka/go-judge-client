@@ -15,9 +15,9 @@ PYTHONPATH = "/w/src:/w"
 [runtimes.python-data.limits]
 cpu_seconds = 10
 wall_seconds = 30
-memory_bytes = 268435456
+memory_bytes = 1073741824
 stack_bytes = 67108864
-processes = 32
+processes = 128
 ```
 
 The TOML document has exactly one top-level table, `runtimes`. Python callers pass a mapping of names
@@ -47,7 +47,7 @@ executing code. Its `model_dump()` includes every effective field.
 
 Profiles provide defaults, not security ceilings: requests may raise limits. Enforce mandatory maximums
 separately in your application or server.
-Limits default to 10 CPU seconds, 30 wall seconds, 256 MiB memory, 64 MiB stack and 32 processes.
+Limits default to 10 CPU seconds, 30 wall seconds, 1 GiB memory, 64 MiB stack and 128 processes/threads.
 Optional `cpu_cores` maps one core to 1000 wire units and requires a deployment with CPU-rate control enabled.
 CPU time and wall time are distinct from the operation deadline.
 

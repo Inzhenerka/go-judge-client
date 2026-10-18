@@ -83,3 +83,37 @@ are reported as not received. No shell, browser, local listener or implicit retr
 Exit statuses: 0 for accepted execution with required artifacts satisfied; 1 for program/artifact failure;
 2 for configuration, connection, protocol or local file errors; 130 for Ctrl+C after local cancellation.
 `profiles` is local inspection. `check` proves only transport connectivity and never executes code.
+
+## Execution limits and client budgets
+
+Use `--cpu-seconds`, `--wall-seconds`, `--memory-bytes`, `--stack-bytes`, `--processes`
+(includes threads on Linux), and `--cpu-cores` to override individual execution limits.
+These work with direct commands and profiles; explicit options override profile values,
+while omitted options inherit them. `--timeout` is an independent deadline for the entire
+operation including queues; increasing it does not increase CPU or wall limits.
+
+Use repeatable `--budget NAME=VALUE` for any `ClientBudgets` field. Byte budgets use bytes;
+count budgets use counts. Budgets apply before local file loading and during execution.
+For example, allow 60 CPU seconds, 120 wall seconds and 16 MiB of combined output:
+
+```sh
+gj run ./main.py --insecure --cpu-seconds 60 --wall-seconds 120 --timeout 180 \
+  --budget output_bytes=16777216 -- /usr/local/bin/python -u main.py
+```
+
+The default 2 MiB output budget also applies to live output with capture disabled. Exceeding
+it cancels execution; increase `output_bytes` for verbose programs. When increasing file
+budgets, also size `send_message_bytes` and `receive_message_bytes` for protobuf overhead.
+
+Byte options also accept integer sizes: `--memory-bytes 1GiB`, `--stack-bytes 64MiB`,
+`--budget output_bytes=16MiB`. IEC units (KiB/MiB/GiB/TiB) use powers of 1024;
+SI units (KB/MB/GB/TB) use powers of 1000. Units are case-insensitive; fractional
+sizes are not supported. Count budgets still require integers.
+
+`--no-cpu-limit` clears an inherited CPU **rate** limit (`cpu_cores`); CPU time and
+wall time limits still apply. It cannot be combined with `--cpu-cores`.
+
+The CLI warns when file/output budgets can exceed transport caps or an individual
+artifact cap exceeds the aggregate cap. It does not silently raise limits. SDK callers
+can inspect the same warnings with `budgets.configuration_warnings()`. These checks
+identify potential conflicts, not exact protobuf sizes; actual send/receive checks remain active.
