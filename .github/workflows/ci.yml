@@ -45,7 +45,7 @@ jobs:
       - name: Start disposable sandbox
         run: >-
           docker run -d --name gj-client-acceptance --label go-judge-client.test=true --privileged --cgroupns=host
-          --memory 512m --cpus 1 -p 127.0.0.1:15051:5051 go-judge-client-test:1.13.3
+          --memory 2g --cpus 1 -p 127.0.0.1:15051:5051 go-judge-client-test:1.13.3
           -enable-grpc -grpc-addr :5051 -http-addr 127.0.0.1:5050
           -auth-token gj-local-test-only -no-fallback -parallelism 1 -pre-fork 1
       - run: uv run poe test-integration
