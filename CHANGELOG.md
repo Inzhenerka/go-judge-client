@@ -1,6 +1,19 @@
 # CHANGELOG
 
 
+## v0.3.0 (2026-10-18)
+
+### Continuous Integration
+
+- Raise integration sandbox memory to 2 GiB
+  ([`f8c5009`](https://github.com/Inzhenerka/go-judge-client/commit/f8c500944ef9ef213e1c073c761ec9bfc821a55d))
+
+### Features
+
+- Improve execution defaults and expose CLI resource limits
+  ([`1606e9d`](https://github.com/Inzhenerka/go-judge-client/commit/1606e9dcb8ae97e1cfe4cf2fa919e4955d1bf5f1))
+
+
 ## v0.2.0 (2026-10-14)
 
 ### Features
