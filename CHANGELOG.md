@@ -1,6 +1,19 @@
 # CHANGELOG
 
 
+## v0.4.0 (2026-11-09)
+
+### Chores
+
+- Update Go Judge test runtime to v1.14.0
+  ([`9b52e8c`](https://github.com/Inzhenerka/go-judge-client/commit/9b52e8c6d4372b3e715069a6b685d8851167af15))
+
+### Features
+
+- Expose structured client limit reasons
+  ([`e9ad8cb`](https://github.com/Inzhenerka/go-judge-client/commit/e9ad8cb51f364f692629b1482e2213512ce774f5))
+
+
 ## v0.3.0 (2026-10-18)
 
 ### Continuous Integration
