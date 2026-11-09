@@ -1,5 +1,5 @@
 FROM golang:1.27.2-bookworm@sha256:5cf287a799e6b94384bad13d16b14904c531f51ba65792237e122ce42b392f61 AS build
-ARG GO_JUDGE_REV=4ebd2ffe9474639c665fa21cfb438f68820fe77c
+ARG GO_JUDGE_REV=ad9339e537d3336fb9daf62342d6a73ce27d15c6
 ADD https://github.com/criyle/go-judge/archive/${GO_JUDGE_REV}.tar.gz /tmp/source.tar.gz
 RUN mkdir /src && tar xzf /tmp/source.tar.gz --strip-components=1 -C /src
 WORKDIR /src

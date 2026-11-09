@@ -51,7 +51,7 @@ Sizes equal to a local budget pass its check. If both file budgets are exceeded,
 runs first. Other client limits may leave both fields unset. A rejected response has no
 `ExecutionResult`. When Judge skips a file and reports `CopyOutSizeExceeded`, the returned
 `ExecutionResult` carries it in `artifact_problems` alongside the original Judge status, output
-and available files. Go Judge 1.13.3 reports `FileError` for an oversized optional file, so
+and available files. Go Judge 1.14.0 reports `FileError` for an oversized optional file, so
 `result.success` is false even when `required_artifacts_satisfied` is true. A file that was
 simply absent is listed in `not_received`. Its absence does not affect required artifact checks
 if the file was optional.

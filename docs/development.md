@@ -3,13 +3,11 @@
 For a local server, first build the runtime image, then run the foreground task:
 
 ```sh
-docker build -t go-judge-client-test:1.13.3 -f examples/runtime-image/Dockerfile .
+docker build -t go-judge-client-test:1.14.0 -f examples/runtime-image/Dockerfile .
 ```
 
-Release integration requires native Linux amd64. The current pinned server fails functional acceptance
-on ARM64 Docker Desktop, and amd64 emulation there fails seccomp initialization. These failures do not
-prevent using the Python SDK from an ARM64 client connected to a compatible remote server. See the
-[current verification record](compatibility.md#current-checkout-verification-2026-10-14).
+Release integration requires native Linux amd64. For local test results and earlier Docker Desktop
+limitations, see the [compatibility record](compatibility.md).
 
 Start the server:
 
@@ -17,7 +15,7 @@ Start the server:
 uv run poe judge
 ```
 
-This foreground task uses the locally built `go-judge-client-test:1.13.3` image, binds gRPC only to
+This foreground task uses the locally built `go-judge-client-test:1.14.0` image, binds gRPC only to
 `127.0.0.1:15051`, and enables no authentication token. Stop it with `Ctrl+C`; Docker then removes the
 container because the command uses `--rm`.
 
@@ -69,9 +67,9 @@ Use a disposable Linux Docker environment. The example builds one Python runtime
 dependencies at execution time. Pin and review all images before production use.
 
 ```sh
-docker build -t go-judge-client-test:1.13.3 -f examples/runtime-image/Dockerfile .
+docker build -t go-judge-client-test:1.14.0 -f examples/runtime-image/Dockerfile .
 docker run -d --name gj-client-acceptance --label go-judge-client.test=true --privileged --cgroupns=host \
-  --memory 2g --cpus 1 -p 127.0.0.1:15051:5051 go-judge-client-test:1.13.3 \
+  --memory 2g --cpus 1 -p 127.0.0.1:15051:5051 go-judge-client-test:1.14.0 \
   -enable-grpc -grpc-addr :5051 -http-addr 127.0.0.1:5050 \
   -auth-token gj-local-test-only -no-fallback -parallelism 1 -pre-fork 1
 GO_JUDGE_TEST_TARGET=127.0.0.1:15051 uv run poe test-integration

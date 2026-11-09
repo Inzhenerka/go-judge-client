@@ -1,5 +1,16 @@
 # Compatibility and implementation evidence
 
+## Go Judge v1.14.0 (2026-11-09)
+
+The runtime image pins upstream commit `ad9339e537d3336fb9daf62342d6a73ce27d15c6`.
+The server uses protobuf module v1.4.1, which adds `exitOrder` to the wire result.
+The SDK submits one command per request and does not expose grouped completion order.
+
+On ARM64 Docker Desktop, the pinned image passed all 21 integration cases, the CLI SIGINT
+check and the remote process cleanup check. Native Linux amd64 remains the release integration gate.
+When the cgroup swap controller is available, v1.14.0 disables swap by default.
+See the [upstream release notes](https://github.com/criyle/go-judge/releases/tag/v1.14.0).
+
 ## Verification scope
 
 The observations below were recorded on 2026-09-28 and describe that development environment.
@@ -37,7 +48,7 @@ This refresh uses grpcio/grpcio-tools 1.84.0, protobuf 7.36.2, Pydantic 2.14.1, 
 Ruff 0.17.0, ty 0.0.87, and uv/uv_build 0.13.1. Generated bindings require grpcio >=1.84
 and protobuf >=7.35.1; protobuf 6 is no longer supported by this generation of bindings.
 
-The test image builds go-judge v1.13.3 (`4ebd2ffe9474639c665fa21cfb438f68820fe77c`) with Go 1.27.2.
+That test image built go-judge v1.13.3 (`4ebd2ffe9474639c665fa21cfb438f68820fe77c`) with Go 1.27.2.
 Both base images are pinned by digest. Its six protocol schemas are byte-identical to the previous pin.
 Well-known compiler schemas and generated Python bindings were refreshed together.
 

@@ -93,7 +93,7 @@ asyncio.run(main())
 ```
 
 `await client.execute(ExecutionRequest(command=("/bin/echo", "Hello")))` uses unary `Exec`
-and returns a bounded captured result through the server's ordinary queue. On go-judge v1.13.3,
+and returns a bounded captured result through the server's ordinary queue. On go-judge v1.14.0,
 `-parallelism` limits these requests across client instances and API workers.
 
 | API | RPC | Server `parallelism` | Output |
@@ -124,7 +124,7 @@ Build the test image once, then start the local server in the foreground, withou
 (Docker with Linux containers is required):
 
 ```sh
-docker build -t go-judge-client-test:1.13.3 -f examples/runtime-image/Dockerfile .
+docker build -t go-judge-client-test:1.14.0 -f examples/runtime-image/Dockerfile .
 uv run poe judge
 ```
 

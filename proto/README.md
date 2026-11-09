@@ -1,8 +1,8 @@
 # Protocol provenance
 
-Six root `.proto` files are unmodified from criyle/go-judge commit
-`4ebd2ffe9474639c665fa21cfb438f68820fe77c` (v1.13.3), verified on 2026-10-14.
-These schemas are byte-identical to the previously pinned `e9d70a0` revision.
+The six root `.proto` files are unmodified from `github.com/criyle/go-judge/pb` v1.4.1,
+the module used by Go Judge v1.14.0 (`ad9339e537d3336fb9daf62342d6a73ce27d15c6`).
+Compared with the schemas used by v1.13.3, `response.proto` adds the `exitOrder` field.
 The upstream MIT license is in `LICENSE`.
 
 `google/protobuf/go_features.proto` is from protocolbuffers/protobuf-go `v1.36.11`;

@@ -25,7 +25,7 @@ _sym_db = _symbol_database.Default()
 from . import go_features_pb2 as google_dot_protobuf_dot_go__features__pb2
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x0eresponse.proto\x12\x02pb\x1a!google/protobuf/go_features.proto\"\xc7\x08\n\x08Response\x12\x11\n\trequestID\x18\x01 \x01(\t\x12$\n\x07results\x18\x02 \x03(\x0b\x32\x13.pb.Response.Result\x12\r\n\x05\x65rror\x18\x03 \x01(\t\x1a\xc3\x02\n\tFileError\x12\x0c\n\x04name\x18\x01 \x01(\t\x12.\n\x04type\x18\x02 \x01(\x0e\x32 .pb.Response.FileError.ErrorType\x12\x0f\n\x07message\x18\x03 \x01(\t\"\xe6\x01\n\tErrorType\x12\x12\n\x0e\x43opyInOpenFile\x10\x00\x12\x14\n\x10\x43opyInCreateFile\x10\x01\x12\x15\n\x11\x43opyInCopyContent\x10\x02\x12\x0f\n\x0b\x43opyOutOpen\x10\x03\x12\x19\n\x15\x43opyOutNotRegularFile\x10\x04\x12\x17\n\x13\x43opyOutSizeExceeded\x10\x05\x12\x15\n\x11\x43opyOutCreateFile\x10\x06\x12\x16\n\x12\x43opyOutCopyContent\x10\x07\x12\x17\n\x13\x43ollectSizeExceeded\x10\x08\x12\x0b\n\x07Symlink\x10\t\x1a\xac\x05\n\x06Result\x12.\n\x06status\x18\x01 \x01(\x0e\x32\x1e.pb.Response.Result.StatusType\x12\x12\n\nexitStatus\x18\x02 \x01(\x05\x12\r\n\x05\x65rror\x18\x03 \x01(\t\x12\x0c\n\x04time\x18\x04 \x01(\x04\x12\x0f\n\x07runTime\x18\x08 \x01(\x04\x12\x10\n\x08procPeak\x18\n \x01(\x04\x12\x0e\n\x06memory\x18\x05 \x01(\x04\x12-\n\x05\x66iles\x18\x06 \x03(\x0b\x32\x1e.pb.Response.Result.FilesEntry\x12\x31\n\x07\x66ileIDs\x18\x07 \x03(\x0b\x32 .pb.Response.Result.FileIDsEntry\x12)\n\tfileError\x18\t \x03(\x0b\x32\x16.pb.Response.FileError\x1a,\n\nFilesEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\x0c:\x02\x38\x01\x1a.\n\x0c\x46ileIDsEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01\"\xa2\x02\n\nStatusType\x12\x0b\n\x07Invalid\x10\x00\x12\x0c\n\x08\x41\x63\x63\x65pted\x10\x01\x12\x0f\n\x0bWrongAnswer\x10\x02\x12\x14\n\x10PartiallyCorrect\x10\x03\x12\x17\n\x13MemoryLimitExceeded\x10\x04\x12\x15\n\x11TimeLimitExceeded\x10\x05\x12\x17\n\x13OutputLimitExceeded\x10\x06\x12\r\n\tFileError\x10\x07\x12\x15\n\x11NonZeroExitStatus\x10\x08\x12\r\n\tSignalled\x10\t\x12\x14\n\x10\x44\x61ngerousSyscall\x10\n\x12\x13\n\x0fJudgementFailed\x10\x0b\x12\x16\n\x12InvalidInteraction\x10\x0c\x12\x11\n\rInternalError\x10\rB)Z\x1dgithub.com/criyle/go-judge/pb\x92\x03\x07\x08\x02\xd2>\x02\x10\x03\x62\x08\x65\x64itionsp\xe8\x07')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x0eresponse.proto\x12\x02pb\x1a!google/protobuf/go_features.proto\"\xda\x08\n\x08Response\x12\x11\n\trequestID\x18\x01 \x01(\t\x12$\n\x07results\x18\x02 \x03(\x0b\x32\x13.pb.Response.Result\x12\r\n\x05\x65rror\x18\x03 \x01(\t\x1a\xc3\x02\n\tFileError\x12\x0c\n\x04name\x18\x01 \x01(\t\x12.\n\x04type\x18\x02 \x01(\x0e\x32 .pb.Response.FileError.ErrorType\x12\x0f\n\x07message\x18\x03 \x01(\t\"\xe6\x01\n\tErrorType\x12\x12\n\x0e\x43opyInOpenFile\x10\x00\x12\x14\n\x10\x43opyInCreateFile\x10\x01\x12\x15\n\x11\x43opyInCopyContent\x10\x02\x12\x0f\n\x0b\x43opyOutOpen\x10\x03\x12\x19\n\x15\x43opyOutNotRegularFile\x10\x04\x12\x17\n\x13\x43opyOutSizeExceeded\x10\x05\x12\x15\n\x11\x43opyOutCreateFile\x10\x06\x12\x16\n\x12\x43opyOutCopyContent\x10\x07\x12\x17\n\x13\x43ollectSizeExceeded\x10\x08\x12\x0b\n\x07Symlink\x10\t\x1a\xbf\x05\n\x06Result\x12.\n\x06status\x18\x01 \x01(\x0e\x32\x1e.pb.Response.Result.StatusType\x12\x12\n\nexitStatus\x18\x02 \x01(\x05\x12\r\n\x05\x65rror\x18\x03 \x01(\t\x12\x0c\n\x04time\x18\x04 \x01(\x04\x12\x0f\n\x07runTime\x18\x08 \x01(\x04\x12\x10\n\x08procPeak\x18\n \x01(\x04\x12\x0e\n\x06memory\x18\x05 \x01(\x04\x12-\n\x05\x66iles\x18\x06 \x03(\x0b\x32\x1e.pb.Response.Result.FilesEntry\x12\x31\n\x07\x66ileIDs\x18\x07 \x03(\x0b\x32 .pb.Response.Result.FileIDsEntry\x12)\n\tfileError\x18\t \x03(\x0b\x32\x16.pb.Response.FileError\x12\x11\n\texitOrder\x18\x0b \x01(\x05\x1a,\n\nFilesEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\x0c:\x02\x38\x01\x1a.\n\x0c\x46ileIDsEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01\"\xa2\x02\n\nStatusType\x12\x0b\n\x07Invalid\x10\x00\x12\x0c\n\x08\x41\x63\x63\x65pted\x10\x01\x12\x0f\n\x0bWrongAnswer\x10\x02\x12\x14\n\x10PartiallyCorrect\x10\x03\x12\x17\n\x13MemoryLimitExceeded\x10\x04\x12\x15\n\x11TimeLimitExceeded\x10\x05\x12\x17\n\x13OutputLimitExceeded\x10\x06\x12\r\n\tFileError\x10\x07\x12\x15\n\x11NonZeroExitStatus\x10\x08\x12\r\n\tSignalled\x10\t\x12\x14\n\x10\x44\x61ngerousSyscall\x10\n\x12\x13\n\x0fJudgementFailed\x10\x0b\x12\x16\n\x12InvalidInteraction\x10\x0c\x12\x11\n\rInternalError\x10\rB)Z\x1dgithub.com/criyle/go-judge/pb\x92\x03\x07\x08\x02\xd2>\x02\x10\x03\x62\x08\x65\x64itionsp\xe8\x07')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -38,17 +38,17 @@ if not _descriptor._USE_C_DESCRIPTORS:
   _globals['_RESPONSE_RESULT_FILEIDSENTRY']._loaded_options = None
   _globals['_RESPONSE_RESULT_FILEIDSENTRY']._serialized_options = b'8\001'
   _globals['_RESPONSE']._serialized_start=58
-  _globals['_RESPONSE']._serialized_end=1153
+  _globals['_RESPONSE']._serialized_end=1172
   _globals['_RESPONSE_FILEERROR']._serialized_start=143
   _globals['_RESPONSE_FILEERROR']._serialized_end=466
   _globals['_RESPONSE_FILEERROR_ERRORTYPE']._serialized_start=236
   _globals['_RESPONSE_FILEERROR_ERRORTYPE']._serialized_end=466
   _globals['_RESPONSE_RESULT']._serialized_start=469
-  _globals['_RESPONSE_RESULT']._serialized_end=1153
-  _globals['_RESPONSE_RESULT_FILESENTRY']._serialized_start=768
-  _globals['_RESPONSE_RESULT_FILESENTRY']._serialized_end=812
-  _globals['_RESPONSE_RESULT_FILEIDSENTRY']._serialized_start=814
-  _globals['_RESPONSE_RESULT_FILEIDSENTRY']._serialized_end=860
-  _globals['_RESPONSE_RESULT_STATUSTYPE']._serialized_start=863
-  _globals['_RESPONSE_RESULT_STATUSTYPE']._serialized_end=1153
+  _globals['_RESPONSE_RESULT']._serialized_end=1172
+  _globals['_RESPONSE_RESULT_FILESENTRY']._serialized_start=787
+  _globals['_RESPONSE_RESULT_FILESENTRY']._serialized_end=831
+  _globals['_RESPONSE_RESULT_FILEIDSENTRY']._serialized_start=833
+  _globals['_RESPONSE_RESULT_FILEIDSENTRY']._serialized_end=879
+  _globals['_RESPONSE_RESULT_STATUSTYPE']._serialized_start=882
+  _globals['_RESPONSE_RESULT_STATUSTYPE']._serialized_end=1172
 # @@protoc_insertion_point(module_scope)

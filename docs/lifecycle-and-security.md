@@ -39,7 +39,7 @@ backpressure; it must exit the context to release its permit. No destructor clea
 Local concurrency defaults to 8. Waiting tasks retain their input snapshots but do not build protobuf
 messages until admitted. The number of waiting tasks is not bounded by the SDK; applications should
 limit their own submission queues. It is not a distributed queue or a count of remote live processes after
-network loss. On pinned upstream v1.13.3, `execute()` uses `Exec` → `worker.Submit`, so the server's
+network loss. On pinned upstream v1.14.0, `execute()` uses `Exec` → `worker.Submit`, so the server's
 `parallelism` bounds ordinary requests across all clients of that server. It counts requests, not child
 processes. `stream()` uses `ExecStream` → `worker.Execute` and bypasses that gate intentionally.
 Mixed traffic therefore has no combined server limit from `parallelism`; a deployment needing a shared

@@ -42,7 +42,7 @@ class Response(_message.Message):
         message: str
         def __init__(self, name: _Optional[str] = ..., type: _Optional[_Union[Response.FileError.ErrorType, str]] = ..., message: _Optional[str] = ...) -> None: ...
     class Result(_message.Message):
-        __slots__ = ("status", "exitStatus", "error", "time", "runTime", "procPeak", "memory", "files", "fileIDs", "fileError")
+        __slots__ = ("status", "exitStatus", "error", "time", "runTime", "procPeak", "memory", "files", "fileIDs", "fileError", "exitOrder")
         class StatusType(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
             __slots__ = ()
             Invalid: _ClassVar[Response.Result.StatusType]
@@ -97,6 +97,7 @@ class Response(_message.Message):
         FILES_FIELD_NUMBER: _ClassVar[int]
         FILEIDS_FIELD_NUMBER: _ClassVar[int]
         FILEERROR_FIELD_NUMBER: _ClassVar[int]
+        EXITORDER_FIELD_NUMBER: _ClassVar[int]
         status: Response.Result.StatusType
         exitStatus: int
         error: str
@@ -107,7 +108,8 @@ class Response(_message.Message):
         files: _containers.ScalarMap[str, bytes]
         fileIDs: _containers.ScalarMap[str, str]
         fileError: _containers.RepeatedCompositeFieldContainer[Response.FileError]
-        def __init__(self, status: _Optional[_Union[Response.Result.StatusType, str]] = ..., exitStatus: _Optional[int] = ..., error: _Optional[str] = ..., time: _Optional[int] = ..., runTime: _Optional[int] = ..., procPeak: _Optional[int] = ..., memory: _Optional[int] = ..., files: _Optional[_Mapping[str, bytes]] = ..., fileIDs: _Optional[_Mapping[str, str]] = ..., fileError: _Optional[_Iterable[_Union[Response.FileError, _Mapping]]] = ...) -> None: ...
+        exitOrder: int
+        def __init__(self, status: _Optional[_Union[Response.Result.StatusType, str]] = ..., exitStatus: _Optional[int] = ..., error: _Optional[str] = ..., time: _Optional[int] = ..., runTime: _Optional[int] = ..., procPeak: _Optional[int] = ..., memory: _Optional[int] = ..., files: _Optional[_Mapping[str, bytes]] = ..., fileIDs: _Optional[_Mapping[str, str]] = ..., fileError: _Optional[_Iterable[_Union[Response.FileError, _Mapping]]] = ..., exitOrder: _Optional[int] = ...) -> None: ...
     REQUESTID_FIELD_NUMBER: _ClassVar[int]
     RESULTS_FIELD_NUMBER: _ClassVar[int]
     ERROR_FIELD_NUMBER: _ClassVar[int]
