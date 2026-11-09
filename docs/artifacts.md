@@ -38,6 +38,24 @@ bounds message allocation; there are additional Python/protobuf object allocatio
 even with `capture_output=False`. Exceeding a client budget cancels and raises `ClientLimitExceededError`;
 it never silently truncates a supposedly complete transcript.
 
+Inspect `ClientLimitExceededError.reason` to distinguish execution budget failures:
+
+| `ClientLimitReason` | Meaning | `limit_bytes` |
+|---|---|---|
+| `OUTPUT_BYTES` | Combined stdout and stderr exceeded the client budget | `output_bytes` |
+| `ARTIFACT_BYTES` | A file received from Judge exceeded the local per-file budget | `artifact_bytes` |
+| `ARTIFACTS_BYTES` | Received files exceeded the local total budget | `artifacts_bytes` |
+| `RESOURCE_EXHAUSTED` | gRPC reported resource exhaustion with an unknown cause | `None` |
+
+Sizes equal to a local budget pass its check. If both file budgets are exceeded, the per-file check
+runs first. Other client limits may leave both fields unset. A rejected response has no
+`ExecutionResult`. When Judge skips a file and reports `CopyOutSizeExceeded`, the returned
+`ExecutionResult` carries it in `artifact_problems` alongside the original Judge status, output
+and available files. Go Judge 1.13.3 reports `FileError` for an oversized optional file, so
+`result.success` is false even when `required_artifacts_satisfied` is true. A file that was
+simply absent is listed in `not_received`. Its absence does not affect required artifact checks
+if the file was optional.
+
 SDK results do not save files. The CLI writes requested paths exclusively under the chosen output directory,
 rejecting existing symlink/junction components and, by default, existing files. With `--overwrite`,
 regular files are replaced atomically using a temporary file in the destination directory. The replacement

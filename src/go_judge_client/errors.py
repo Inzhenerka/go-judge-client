@@ -1,5 +1,7 @@
 """Safe, payload-free client errors; remote diagnostics remain in results."""
 
+from enum import StrEnum
+
 import grpc
 
 
@@ -53,8 +55,25 @@ class ExecutionCancelledError(GoJudgeClientError):
     pass
 
 
+class ClientLimitReason(StrEnum):
+    OUTPUT_BYTES = "output_bytes"
+    ARTIFACT_BYTES = "artifact_bytes"
+    ARTIFACTS_BYTES = "artifacts_bytes"
+    RESOURCE_EXHAUSTED = "resource_exhausted"
+
+
 class ClientLimitExceededError(GoJudgeClientError):
-    pass
+    def __init__(
+        self,
+        message: str,
+        *,
+        status_code: grpc.StatusCode | None = None,
+        reason: ClientLimitReason | None = None,
+        limit_bytes: int | None = None,
+    ) -> None:
+        super().__init__(message, status_code=status_code)
+        self.reason = reason
+        self.limit_bytes = limit_bytes
 
 
 class RemoteServiceError(GoJudgeClientError):
@@ -62,12 +81,14 @@ class RemoteServiceError(GoJudgeClientError):
 
 
 def rpc_error(code: grpc.StatusCode) -> GoJudgeClientError:
+    message = f"gRPC operation failed ({code.name}); remote outcome may be unknown"
+    if code == grpc.StatusCode.RESOURCE_EXHAUSTED:
+        return ClientLimitExceededError(message, status_code=code, reason=ClientLimitReason.RESOURCE_EXHAUSTED)
     kind = {
         grpc.StatusCode.UNAUTHENTICATED: AuthenticationError,
         grpc.StatusCode.PERMISSION_DENIED: PermissionDeniedError,
         grpc.StatusCode.UNIMPLEMENTED: CompatibilityError,
         grpc.StatusCode.DEADLINE_EXCEEDED: ExecutionDeadlineExceeded,
         grpc.StatusCode.CANCELLED: ExecutionCancelledError,
-        grpc.StatusCode.RESOURCE_EXHAUSTED: ClientLimitExceededError,
     }.get(code, ConnectionError)
-    return kind(f"gRPC operation failed ({code.name}); remote outcome may be unknown", status_code=code)
+    return kind(message, status_code=code)

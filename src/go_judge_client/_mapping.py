@@ -3,7 +3,7 @@
 from ._grpc.request_pb2 import Request
 from ._grpc.response_pb2 import Response
 from ._grpc.stream_request_pb2 import StreamRequest
-from .errors import ClientLimitExceededError, ProtocolError, RemoteServiceError
+from .errors import ClientLimitExceededError, ClientLimitReason, ProtocolError, RemoteServiceError
 from .models import ArtifactFile, ArtifactProblem, ClientBudgets, ExecutionResult, ExecutionStatus
 from .profiles import ResolvedRequest
 
@@ -69,9 +69,17 @@ def final_result(
     if result.fileIDs or set(result.files) - paths:
         raise ProtocolError("Unexpected cached IDs or unrequested artifact paths")
     if any(len(data) > budgets.artifact_bytes for data in result.files.values()):
-        raise ClientLimitExceededError("Individual artifact budget exceeded")
+        raise ClientLimitExceededError(
+            "Individual artifact budget exceeded",
+            reason=ClientLimitReason.ARTIFACT_BYTES,
+            limit_bytes=budgets.artifact_bytes,
+        )
     if sum(map(len, result.files.values())) > budgets.artifacts_bytes:
-        raise ClientLimitExceededError("Aggregate artifact budget exceeded")
+        raise ClientLimitExceededError(
+            "Aggregate artifact budget exceeded",
+            reason=ClientLimitReason.ARTIFACTS_BYTES,
+            limit_bytes=budgets.artifacts_bytes,
+        )
     artifacts = {
         f.path: ArtifactFile(path=f.path, data=result.files[f.path]) for f in expected if f.path in result.files
     }
@@ -146,7 +154,11 @@ def buffered_result(response: Response, resolved: ResolvedRequest, budgets: Clie
         raise ProtocolError("Successful response is missing output collectors")
     stdout, stderr = (result.files.pop(name, b"") for name in names)
     if len(stdout) + len(stderr) > budgets.output_bytes:
-        raise ClientLimitExceededError("Observed output exceeds client budget")
+        raise ClientLimitExceededError(
+            "Observed output exceeds client budget",
+            reason=ClientLimitReason.OUTPUT_BYTES,
+            limit_bytes=budgets.output_bytes,
+        )
     if any(error.name in names for error in result.fileError):
         raise ProtocolError("Output collector failed; complete output is unavailable")
     return final_result(cleaned, resolved, budgets, stdout, stderr)

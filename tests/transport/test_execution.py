@@ -15,6 +15,7 @@ from go_judge_client import (
     AuthenticationError,
     ClientBudgets,
     ClientLimitExceededError,
+    ClientLimitReason,
     ClientStateError,
     CompatibilityError,
     ExecutionCancelledError,
@@ -51,12 +52,13 @@ class FakeExecutor(ExecutorServicer):
         self.metadata = {key: value for key, value in (context.invocation_metadata() or ())}
         self.requests = [StreamRequest(execRequest=request)]
         assert all(file.WhichOneof("file") == "pipe" for file in request.cmd[0].files[1:])
-        if self.mode in {"auth", "permission", "unsupported", "non-ok"}:
+        if self.mode in {"auth", "permission", "unsupported", "non-ok", "exhausted"}:
             code = {
                 "auth": grpc.StatusCode.UNAUTHENTICATED,
                 "permission": grpc.StatusCode.PERMISSION_DENIED,
                 "unsupported": grpc.StatusCode.UNIMPLEMENTED,
                 "non-ok": grpc.StatusCode.UNAVAILABLE,
+                "exhausted": grpc.StatusCode.RESOURCE_EXHAUSTED,
             }[self.mode]
             await context.abort(code, "untrusted diagnostic containing synthetic-secret")
         try:
@@ -64,6 +66,8 @@ class FakeExecutor(ExecutorServicer):
             if self.mode == "wait":
                 await self.release.wait()
             files = {f.name: b"artifact" for f in request.cmd[0].copyOut if f.name != "missing"}
+            if self.mode == "large-response":
+                files["binary"] = b"x" * 2048
             for file, data in zip(request.cmd[0].files[1:], ("€".encode(), b"err"), strict=True):
                 files[file.pipe.name] = data
             return Response(
@@ -129,6 +133,8 @@ class FakeExecutor(ExecutorServicer):
                 yield final
             if self.mode == "late-output":
                 yield StreamResponse(execOutput=output)
+            if self.mode == "exhausted":
+                await context.abort(grpc.StatusCode.RESOURCE_EXHAUSTED, "private")
             if self.mode in {"non-ok", "text-tail-non-ok"}:
                 await context.abort(grpc.StatusCode.UNAVAILABLE, "private")
         finally:
@@ -251,20 +257,71 @@ async def test_non_ok_after_final(server: tuple[FakeExecutor, str]) -> None:
 @pytest.mark.parametrize("capture", [True, False])
 async def test_output_budget(server: tuple[FakeExecutor, str], capture: bool) -> None:
     _, target = server
-    async with AsyncGoJudgeClient(target, insecure=True, budgets=ClientBudgets(output_bytes=2)) as client:
-        with pytest.raises(ClientLimitExceededError):
+    async with AsyncGoJudgeClient(target, insecure=True, budgets=ClientBudgets(output_bytes=6)) as client:
+        async with client.stream(request(), capture_output=capture) as execution:
+            async for _ in execution:
+                pass
+            assert execution.result.success
+    async with AsyncGoJudgeClient(target, insecure=True, budgets=ClientBudgets(output_bytes=5)) as client:
+        with pytest.raises(ClientLimitExceededError) as caught:
             async with client.stream(request(), capture_output=capture) as execution:
                 async for _ in execution:
                     pass
+        assert caught.value.reason is ClientLimitReason.OUTPUT_BYTES
+        assert caught.value.limit_bytes == 5
         assert not client._executions
 
 
-@pytest.mark.parametrize("budgets", [ClientBudgets(artifact_bytes=1), ClientBudgets(artifacts_bytes=1)])
-async def test_artifact_budgets(server: tuple[FakeExecutor, str], budgets: ClientBudgets) -> None:
+@pytest.mark.parametrize(
+    ("budgets", "reason"),
+    [
+        (ClientBudgets(artifact_bytes=7), ClientLimitReason.ARTIFACT_BYTES),
+        (ClientBudgets(artifact_bytes=8, artifacts_bytes=15), ClientLimitReason.ARTIFACTS_BYTES),
+    ],
+)
+async def test_artifact_budgets(
+    server: tuple[FakeExecutor, str], budgets: ClientBudgets, reason: ClientLimitReason
+) -> None:
     _, target = server
+    req = request()
+    async with AsyncGoJudgeClient(
+        target, insecure=True, budgets=ClientBudgets(artifact_bytes=8, artifacts_bytes=16)
+    ) as client:
+        assert (await client.execute(req)).success
     async with AsyncGoJudgeClient(target, insecure=True, budgets=budgets) as client:
-        with pytest.raises(ClientLimitExceededError):
+        with pytest.raises(ClientLimitExceededError) as caught:
+            await client.execute(req)
+        assert caught.value.reason is reason
+        assert caught.value.limit_bytes == getattr(budgets, reason.value)
+
+
+@pytest.mark.parametrize("streaming", [False, True])
+async def test_rpc_resource_exhausted(server: tuple[FakeExecutor, str], streaming: bool) -> None:
+    service, target = server
+    service.mode = "exhausted"
+    async with AsyncGoJudgeClient(target, insecure=True) as client:
+        with pytest.raises(ClientLimitExceededError) as caught:
+            if streaming:
+                async with client.stream(request()) as execution:
+                    async for event in execution:
+                        assert isinstance(event, Output)
+            else:
+                await client.execute(request())
+        assert caught.value.reason is ClientLimitReason.RESOURCE_EXHAUSTED
+        assert caught.value.status_code is grpc.StatusCode.RESOURCE_EXHAUSTED
+        assert caught.value.limit_bytes is None
+
+
+async def test_receive_cap_reports_resource_exhausted(server: tuple[FakeExecutor, str]) -> None:
+    service, target = server
+    service.mode = "large-response"
+    budgets = ClientBudgets(receive_message_bytes=1025, artifact_bytes=1)
+    async with AsyncGoJudgeClient(target, insecure=True, budgets=budgets) as client:
+        with pytest.raises(ClientLimitExceededError) as caught:
             await client.execute(request())
+    assert caught.value.reason is ClientLimitReason.RESOURCE_EXHAUSTED
+    assert caught.value.status_code is grpc.StatusCode.RESOURCE_EXHAUSTED
+    assert caught.value.limit_bytes is None
 
 
 async def test_unknown_status_and_no_capture(server: tuple[FakeExecutor, str]) -> None:
@@ -856,8 +913,10 @@ async def test_unary_does_not_retry_or_fallback(server: tuple[FakeExecutor, str]
 async def test_unary_aggregate_output_budget(server: tuple[FakeExecutor, str]) -> None:
     _, target = server
     async with AsyncGoJudgeClient(target, insecure=True, budgets=ClientBudgets(output_bytes=5)) as client:
-        with pytest.raises(ClientLimitExceededError):
+        with pytest.raises(ClientLimitExceededError) as caught:
             await client.execute(request())
+        assert caught.value.reason is ClientLimitReason.OUTPUT_BYTES
+        assert caught.value.limit_bytes == 5
         assert not client._executions and client._semaphore._value == 8
 
 

@@ -4,6 +4,7 @@ from .client import AsyncGoJudgeClient
 from .errors import (
     AuthenticationError,
     ClientLimitExceededError,
+    ClientLimitReason,
     ClientStateError,
     CompatibilityError,
     ConfigurationError,
@@ -44,6 +45,7 @@ __all__ = [
     "AuthenticationError",
     "ClientBudgets",
     "ClientLimitExceededError",
+    "ClientLimitReason",
     "ClientStateError",
     "CompatibilityError",
     "ConfigurationError",

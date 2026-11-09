@@ -12,8 +12,11 @@ from go_judge_client import (
     AsyncGoJudgeClient,
     AuthenticationError,
     ClientBudgets,
+    ClientLimitExceededError,
+    ClientLimitReason,
     ExecutionCancelledError,
     ExecutionRequest,
+    ExecutionResult,
     ExpectedFile,
     Limits,
     Output,
@@ -187,6 +190,58 @@ async def test_real_artifact_size_and_workspace_isolation(target: str) -> None:
             ExecutionRequest(command=("/bin/sh", "-c", "test ! -w /usr/local/runtimes/python-data/bin/python"))
         )
         assert result.status == "accepted"
+
+
+async def run_with_artifacts(sdk: AsyncGoJudgeClient, request: ExecutionRequest, *, streaming: bool) -> ExecutionResult:
+    if not streaming:
+        return await sdk.execute(request)
+    async with sdk.stream(request) as execution:
+        async for _ in execution:
+            pass
+        return execution.result
+
+
+@pytest.mark.parametrize("streaming", [False, True])
+async def test_real_optional_oversize_artifact(target: str, streaming: bool) -> None:
+    request = ExecutionRequest(
+        command=("/bin/sh", "-c", "printf 'hello\\n'; printf 12345 > large; printf 1234 > small"),
+        expected_files=(ExpectedFile(path="large", required=False), ExpectedFile(path="small")),
+    )
+    budgets = ClientBudgets(artifact_bytes=4, artifacts_bytes=4)
+    async with AsyncGoJudgeClient(target, insecure=True, token=token(), budgets=budgets) as sdk:
+        result = await run_with_artifacts(sdk, request, streaming=streaming)
+    assert result.stdout == b"hello\n"
+    assert result.artifacts["small"].data == b"1234"
+    assert result.not_received == ("large",)
+    assert [(problem.path, problem.error_name) for problem in result.artifact_problems] == [
+        ("large", "CopyOutSizeExceeded")
+    ]
+    assert result.required_artifacts_satisfied
+    assert (result.upstream_status, result.upstream_status_name) == (7, "FileError")
+    assert not result.success
+
+
+@pytest.mark.parametrize("streaming", [False, True])
+@pytest.mark.parametrize("limit", [8, 7])
+async def test_real_aggregate_artifact_budget(target: str, streaming: bool, limit: int) -> None:
+    request = ExecutionRequest(
+        command=("/bin/sh", "-c", "printf 1234 > first; printf 5678 > second"),
+        expected_files=(ExpectedFile(path="first"), ExpectedFile(path="second")),
+    )
+    budgets = ClientBudgets(artifact_bytes=4, artifacts_bytes=limit)
+    async with AsyncGoJudgeClient(target, insecure=True, token=token(), budgets=budgets) as sdk:
+        if limit == 8:
+            result = await run_with_artifacts(sdk, request, streaming=streaming)
+            assert result.success
+            assert {name: file.data for name, file in result.artifacts.items()} == {
+                "first": b"1234",
+                "second": b"5678",
+            }
+        else:
+            with pytest.raises(ClientLimitExceededError) as caught:
+                await run_with_artifacts(sdk, request, streaming=streaming)
+            assert caught.value.reason is ClientLimitReason.ARTIFACTS_BYTES
+            assert caught.value.limit_bytes == limit
 
 
 async def test_real_cli_profile(target: str, tmp_path: Path) -> None:

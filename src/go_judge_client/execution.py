@@ -14,7 +14,7 @@ from ._grpc.stream_request_pb2 import StreamRequest
 from ._grpc.stream_response_pb2 import StreamResponse
 from ._mapping import final_result, wire_request
 from ._operation import Operation
-from .errors import ClientLimitExceededError, ClientStateError, ProtocolError, rpc_error
+from .errors import ClientLimitExceededError, ClientLimitReason, ClientStateError, ProtocolError, rpc_error
 from .events import Artifact, ExecutionEvent, Finished, Output, TextExecutionEvent, TextOutput
 from .models import ExecutionRequest
 from .profiles import ResolvedRequest
@@ -178,7 +178,11 @@ class Execution(Operation):
                             raise ProtocolError("Unexpected command index or output descriptor")
                         self.output_bytes += len(output.content)
                         if self.output_bytes > self._client.budgets.output_bytes:
-                            raise ClientLimitExceededError("Observed output exceeds client budget")
+                            raise ClientLimitExceededError(
+                                "Observed output exceeds client budget",
+                                reason=ClientLimitReason.OUTPUT_BYTES,
+                                limit_bytes=self._client.budgets.output_bytes,
+                            )
                         if self.first_output_at is None:
                             self.first_output_at = asyncio.get_running_loop().time()
                         if self._capture:

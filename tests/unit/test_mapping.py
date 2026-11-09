@@ -33,8 +33,10 @@ def test_file_error_preservation() -> None:
 def test_serialized_request_size_cap() -> None:
     budgets = ClientBudgets(send_message_bytes=2048)
     resolved = resolve(ExecutionRequest(command=("run",), files={"x": b"x" * 2000}), {}, Limits(), budgets)
-    with pytest.raises(ClientLimitExceededError):
+    with pytest.raises(ClientLimitExceededError) as caught:
         wire_request(resolved, budgets)
+    assert caught.value.reason is None
+    assert caught.value.limit_bytes is None
 
 
 @pytest.mark.parametrize(
